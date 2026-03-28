@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --color-page: #f3efe7;
+  --color-surface: rgba(255, 252, 246, 0.88);
+  --color-panel: #f8f2e8;
+  --color-line: rgba(148, 163, 184, 0.22);
+  --color-ink: #0f172a;
+  --color-muted: #526071;
+  --color-faint: #7f8b99;
+  --color-accent: #f4b942;
+  --color-accent-soft: rgba(244, 185, 66, 0.14);
+  --color-accent-strong: #ffd278;
+}
+
+@theme inline {
+  --color-background: var(--color-page);
+  --color-foreground: var(--color-ink);
+  --font-sans: var(--font-manrope);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top right, rgba(244, 185, 66, 0.18), transparent 28%),
+    linear-gradient(180deg, #f6f0e7 0%, #f0e8dd 100%);
+  color: var(--color-ink);
+  font-family: var(--font-manrope), sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.table-scroll {
+  scrollbar-color: var(--color-accent) var(--color-panel);
+  scrollbar-width: thin;
+}
+
+.table-scroll::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.table-scroll::-webkit-scrollbar-track {
+  background: var(--color-panel);
+  border-radius: 999px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-accent);
+  border: 2px solid var(--color-panel);
+  border-radius: 999px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-strong);
+}
+
+.table-scroll::-webkit-scrollbar-corner {
+  background: var(--color-panel);
+}
