@@ -1,5 +1,4 @@
-import { Pagination } from "@/components/pagination";
-import { SearchableRecordTable } from "@/components/searchable-record-table";
+import { SearchablePaginatedTable } from "@/components/searchable-paginated-table";
 import type {
   RecordTableColumn,
   RecordTableRow,
@@ -43,27 +42,19 @@ export function EntityListPage({
           {title}
         </h1>
       </div>
-
-      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-t-[24px] border border-b-0 border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4">
-        <SearchableRecordTable
-          columns={columns}
-          currentQuery={currentQuery}
-          emptyLabel={emptyLabel}
-          hrefBase={basePath}
-          placeholder={placeholder}
-          rows={result.items}
-        />
-      </div>
-
-      <div className="shrink-0 rounded-b-[24px] border-x border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4">
-        <Pagination
-          basePath={basePath}
-          currentPage={currentPage}
-          query={currentQuery}
-          totalItems={result.total}
-          perPage={result.perPage}
-        />
-      </div>
+      <SearchablePaginatedTable
+        basePath={basePath}
+        columns={columns}
+        currentPage={currentPage}
+        currentQuery={currentQuery}
+        emptyLabel={emptyLabel}
+        footerClassName="shrink-0 rounded-b-[24px] border-x border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4"
+        items={result.items}
+        perPage={result.perPage}
+        placeholder={placeholder}
+        tableClassName="mt-4 min-h-0 flex-1 overflow-hidden rounded-t-[24px] border border-b-0 border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4"
+        total={result.total}
+      />
     </section>
   );
 }

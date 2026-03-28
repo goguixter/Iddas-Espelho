@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { EntityJsonPanel } from "@/components/entity-detail";
+import { formatCurrencyValue, parseNumericValue } from "@/lib/formatting";
 
 type Passenger = {
   id: string;
@@ -552,35 +553,7 @@ function readableTextColor(background: string | null) {
 }
 
 function readCurrency(input: unknown) {
-  const normalized = readNumericValue(input);
-
-  if (normalized === null) {
-    return "—";
-  }
-
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(normalized);
-}
-
-function readNumericValue(input: unknown) {
-  if (typeof input === "number" && Number.isFinite(input)) {
-    return input;
-  }
-
-  const stringValue = readString(input);
-  if (!stringValue) {
-    return null;
-  }
-
-  const normalized = stringValue
-    .replace(/\s+/g, "")
-    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
-    .replace(",", ".");
-
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+  return formatCurrencyValue(input);
 }
 
 function resolveValorAmount(
@@ -588,7 +561,7 @@ function resolveValorAmount(
   raw: Record<string, unknown> | null,
   context: "orcamento" | "venda",
 ) {
-  const directValue = readNumericValue(value["valor"]);
+  const directValue = parseNumericValue(value["valor"]);
   if (directValue !== null) {
     return readCurrency(directValue);
   }
@@ -597,8 +570,8 @@ function resolveValorAmount(
   if (tipo === "R" && raw) {
     const fallbackValue =
       context === "venda"
-        ? readNumericValue(raw.venda) ?? readNumericValue(raw.valor)
-        : readNumericValue(raw.valor) ?? readNumericValue(raw.orcado);
+        ? parseNumericValue(raw.venda) ?? parseNumericValue(raw.valor)
+        : parseNumericValue(raw.valor) ?? parseNumericValue(raw.orcado);
 
     if (fallbackValue !== null) {
       return readCurrency(fallbackValue);

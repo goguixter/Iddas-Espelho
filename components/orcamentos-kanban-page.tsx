@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { Pagination } from "@/components/pagination";
-import { SearchableRecordTable } from "@/components/searchable-record-table";
 import type { RecordTableColumn, RecordTableRow } from "@/components/record-table";
+import { SearchablePaginatedTable } from "@/components/searchable-paginated-table";
 import { buildListHref } from "@/lib/list-navigation";
 
 type Tab = {
@@ -70,28 +69,20 @@ export function OrcamentosKanbanPage({
           );
         })}
       </div>
-
-      <div className="min-h-0 flex-1 overflow-hidden border-x border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4">
-        <SearchableRecordTable
-          columns={columns}
-          currentQuery={currentQuery}
-          emptyLabel="Nenhum orçamento disponível nesta situação."
-          hrefBase="/orcamentos"
-          placeholder="Buscar por id, tag, cliente, telefone ou e-mail"
-          rows={items}
-        />
-      </div>
-
-      <div className="shrink-0 rounded-b-[24px] border-x border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4">
-        <Pagination
-          basePath="/orcamentos"
-          currentPage={currentPage}
-          extraParams={{ situacao: activeSituacao }}
-          query={currentQuery}
-          totalItems={total}
-          perPage={100}
-        />
-      </div>
+      <SearchablePaginatedTable
+        basePath="/orcamentos"
+        columns={columns}
+        currentPage={currentPage}
+        currentQuery={currentQuery}
+        emptyLabel="Nenhum orçamento disponível nesta situação."
+        extraParams={{ situacao: activeSituacao }}
+        footerClassName="shrink-0 rounded-b-[24px] border-x border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4"
+        items={items}
+        perPage={100}
+        placeholder="Buscar por id, tag, cliente, telefone ou e-mail"
+        tableClassName="min-h-0 flex-1 overflow-hidden border-x border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4"
+        total={total}
+      />
     </section>
   );
 }
