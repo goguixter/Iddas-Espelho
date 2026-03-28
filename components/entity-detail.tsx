@@ -12,7 +12,7 @@ export function EntityDetailHeader({
   title: string;
 }) {
   return (
-    <header className="rounded-[28px] border border-white/50 bg-[var(--color-surface)] p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+    <header className="rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-6 shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
         {eyebrow}
       </p>
@@ -62,11 +62,11 @@ export function EntityJsonPanel({
   raw: unknown;
 }) {
   return (
-    <section className="overflow-hidden rounded-[24px] border border-[var(--color-line)] bg-slate-950">
+    <section className="min-w-0 overflow-hidden rounded-[24px] border border-[var(--color-line)] bg-slate-950">
       <div className="border-b border-white/10 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
         JSON bruto espelhado
       </div>
-      <pre className="overflow-x-auto p-5 font-mono text-xs leading-6 text-slate-100">
+      <pre className="max-h-[65vh] max-w-full overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-slate-100">
         {JSON.stringify(raw, null, 2)}
       </pre>
     </section>

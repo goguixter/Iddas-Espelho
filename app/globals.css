@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --color-page: #f3efe7;
-  --color-surface: rgba(255, 252, 246, 0.88);
-  --color-panel: #f8f2e8;
-  --color-line: rgba(148, 163, 184, 0.22);
-  --color-ink: #0f172a;
-  --color-muted: #526071;
-  --color-faint: #7f8b99;
+  --color-page: #0b1220;
+  --color-surface: rgba(31, 41, 55, 0.92);
+  --color-panel: #111827;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-ink: #f8fafc;
+  --color-muted: #cbd5e1;
+  --color-faint: #94a3b8;
   --color-accent: #f4b942;
-  --color-accent-soft: rgba(244, 185, 66, 0.14);
+  --color-accent-soft: rgba(244, 185, 66, 0.16);
   --color-accent-strong: #ffd278;
 }
 
@@ -31,8 +31,9 @@ html {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top right, rgba(244, 185, 66, 0.18), transparent 28%),
-    linear-gradient(180deg, #f6f0e7 0%, #f0e8dd 100%);
+    radial-gradient(circle at top right, rgba(244, 185, 66, 0.14), transparent 24%),
+    radial-gradient(circle at left bottom, rgba(59, 130, 246, 0.12), transparent 28%),
+    linear-gradient(180deg, #0b1220 0%, #111827 100%);
   color: var(--color-ink);
   font-family: var(--font-manrope), sans-serif;
 }

@@ -12,7 +12,7 @@ export default async function Home() {
 
   return (
     <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px]">
-        <div className="rounded-[28px] border border-white/50 bg-[var(--color-surface)] p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+        <div className="rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-8 shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
           <div className="mb-8 flex items-start justify-between gap-6">
             <div className="space-y-3">
               <span className="inline-flex rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">

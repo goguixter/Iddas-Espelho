@@ -20,11 +20,9 @@ export default async function PessoasPage({
     <EntityListPage
       basePath="/pessoas"
       columns={[
-        { key: "id", label: "ID" },
         { key: "nome", label: "Nome" },
         { key: "email", label: "E-mail" },
         { key: "cpf", label: "CPF" },
-        { key: "updated_at", label: "Atualizado" },
       ]}
       currentPage={page}
       currentQuery={query}

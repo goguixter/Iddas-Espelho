@@ -10,6 +10,15 @@ export function parseSearchParam(input?: string | null) {
   return input?.trim() ?? "";
 }
 
+export function normalizeTabKey(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
 export async function getDashboardMetrics() {
   const orcamentos = readCount("orcamentos");
   const pessoas = readCount("pessoas");
@@ -46,12 +55,15 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
           o.id,
           o.identificador,
           o.cliente_pessoa_id,
+          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
+          COALESCE(s.cor, o.situacao_cor) AS situacao_cor,
           o.passageiro_count,
           o.raw_json,
           o.updated_at,
           p.nome AS cliente_nome
         FROM orcamentos o
         LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
         ${where.clause}
         ORDER BY datetime(o.updated_at) DESC, o.id DESC
         LIMIT ? OFFSET ?
@@ -64,11 +76,19 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
       identificador: string | null;
       passageiro_count: number;
       raw_json: string;
+      situacao_cor: string | null;
+      situacao_nome: string | null;
       updated_at: string;
     }>;
 
   const items = rows.map((row) => {
     const raw = parseRawJson(row.raw_json);
+    const situacaoNome =
+      row.situacao_nome ??
+      pickObjectString(raw, ["nome_situacao", "situacao_nome"]);
+    const situacaoCor =
+      row.situacao_cor ??
+      pickObjectString(raw, ["cor_situacao", "situacao_cor"]);
 
     return {
       cliente_nome: row.cliente_nome ?? pickObjectString(raw, ["nome_cliente", "cliente_nome"]),
@@ -77,6 +97,8 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
       id: row.id,
       identificador: row.identificador,
       passageiro_count: row.passageiro_count,
+      situacao_cor: situacaoCor,
+      situacao_nome: situacaoNome,
       tag: row.identificador,
       telefone_cliente: pickObjectString(raw, ["telefone_cliente", "celular_cliente"]),
       updated_at: row.updated_at,
@@ -84,6 +106,198 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
   });
 
   return { items, page, perPage, total };
+}
+
+export async function getOrcamentosKanbanPage(
+  page: number,
+  perPage: number,
+  query = "",
+  situacao = "",
+) {
+  const where = buildLikeWhere(query, [
+    "o.id",
+    "o.identificador",
+    "o.cliente_pessoa_id",
+    "p.nome",
+    "o.raw_json",
+  ]);
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          o.id,
+          o.identificador,
+          o.cliente_pessoa_id,
+          o.situacao_codigo,
+          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
+          COALESCE(s.cor, o.situacao_cor) AS situacao_cor,
+          COALESCE(s.ordem, '') AS situacao_ordem,
+          o.passageiro_count,
+          o.raw_json,
+          o.updated_at,
+          p.nome AS cliente_nome
+        FROM orcamentos o
+        LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
+        ${where.clause}
+        ORDER BY datetime(o.updated_at) DESC, o.id DESC
+      `,
+    )
+    .all(...where.params) as Array<{
+      cliente_nome: string | null;
+      cliente_pessoa_id: string | null;
+      id: string;
+      identificador: string | null;
+      passageiro_count: number;
+      raw_json: string;
+      situacao_codigo: string | null;
+      situacao_cor: string | null;
+      situacao_nome: string | null;
+      situacao_ordem: string;
+      updated_at: string;
+    }>;
+
+  const items = rows.map((row) => {
+    const raw = parseRawJson(row.raw_json);
+    const situacaoNome =
+      row.situacao_nome ??
+      pickObjectString(raw, ["nome_situacao", "situacao_nome"]);
+    const situacaoCor =
+      row.situacao_cor ??
+      pickObjectString(raw, ["cor_situacao", "situacao_cor"]);
+    const situacaoCodigo =
+      row.situacao_codigo ??
+      pickObjectString(raw, ["situacao", "codigo_situacao"]);
+    const situacaoKey = normalizeTabKey(situacaoCodigo ?? situacaoNome ?? "sem-situacao");
+
+    return {
+      cliente_nome: row.cliente_nome ?? pickObjectString(raw, ["nome_cliente", "cliente_nome"]),
+      cliente_pessoa_id: row.cliente_pessoa_id,
+      email_cliente: pickObjectString(raw, ["email_cliente"]),
+      id: row.id,
+      identificador: row.identificador,
+      passageiro_count: row.passageiro_count,
+      situacao_codigo: situacaoCodigo,
+      situacao_cor: situacaoCor,
+      situacao_key: situacaoKey,
+      situacao_nome: situacaoNome ?? "Sem situação",
+      situacao_ordem: row.situacao_ordem,
+      tag: row.identificador,
+      telefone_cliente: pickObjectString(raw, ["telefone_cliente", "celular_cliente"]),
+      updated_at: row.updated_at,
+    };
+  });
+
+  const situacoes = db
+    .prepare(
+      `
+        SELECT codigo, nome, cor, ordem
+        FROM situacoes
+      `,
+    )
+    .all() as Array<{
+      codigo: string | null;
+      cor: string | null;
+      nome: string | null;
+      ordem: string | null;
+    }>;
+
+  const tabsMap = new Map<
+    string,
+    { color: string | null; count: number; key: string; label: string; ordem: string }
+  >();
+
+  for (const tab of getDefaultSituacaoTabs()) {
+    tabsMap.set(tab.key, { ...tab, count: 0 });
+  }
+
+  for (const situacaoItem of situacoes) {
+    const key = normalizeTabKey(situacaoItem.codigo ?? situacaoItem.nome ?? "");
+    if (!key) {
+      continue;
+    }
+
+    const current = tabsMap.get(key);
+    tabsMap.set(key, {
+      color: situacaoItem.cor ?? current?.color ?? null,
+      count: current?.count ?? 0,
+      key,
+      label: situacaoItem.nome ?? current?.label ?? "Sem situação",
+      ordem: situacaoItem.ordem ?? current?.ordem ?? "",
+    });
+  }
+
+  for (const item of items) {
+    const current = tabsMap.get(item.situacao_key);
+    if (current) {
+      current.count += 1;
+      if (!current.color && item.situacao_cor) {
+        current.color = item.situacao_cor;
+      }
+      if ((!current.label || current.label === "Sem situação") && item.situacao_nome) {
+        current.label = item.situacao_nome;
+      }
+      continue;
+    }
+
+    tabsMap.set(item.situacao_key, {
+      color: item.situacao_cor,
+      count: 1,
+      key: item.situacao_key,
+      label: item.situacao_nome ?? "Sem situação",
+      ordem: item.situacao_ordem ?? "",
+    });
+  }
+
+  const tabs = [...tabsMap.values()].sort((left, right) => {
+    const leftOrder = Number(left.ordem);
+    const rightOrder = Number(right.ordem);
+
+    if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder) && leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    const leftFlowOrder = getSituacaoFlowOrder(left.key, left.label);
+    const rightFlowOrder = getSituacaoFlowOrder(right.key, right.label);
+
+    if (leftFlowOrder !== rightFlowOrder) {
+      return leftFlowOrder - rightFlowOrder;
+    }
+
+    return left.label.localeCompare(right.label, "pt-BR");
+  });
+
+  const activeSituacao =
+    tabs.find((tab) => tab.key === situacao)?.key ??
+    tabs[0]?.key ??
+    "sem-situacao";
+  const filteredItems = items.filter((item) => item.situacao_key === activeSituacao);
+  const total = filteredItems.length;
+  const pagedItems = filteredItems.slice((page - 1) * perPage, page * perPage);
+
+  return {
+    activeSituacao,
+    items: pagedItems,
+    page,
+    perPage,
+    tabs,
+    total,
+  };
+}
+
+function getDefaultSituacaoTabs() {
+  return [
+    { key: "e", label: "NOVOS LEADS", color: "#86befd", ordem: "100" },
+    { key: "b", label: "ORÇAMENTO SOLICITADO", color: "#ffd500", ordem: "103" },
+    { key: "y", label: "COTAÇÃO EM ANDAMENTO", color: "#ff9147", ordem: "200" },
+    { key: "c", label: "ORÇAMENTO PRONTO", color: "#379a98", ordem: "300" },
+    { key: "n", label: "VENDEDOR ENVIOU", color: "#ffa3a3", ordem: "301" },
+    { key: "w", label: "FOLLOW UP", color: "#d494ff", ordem: "302" },
+    { key: "z", label: "AGENDADO", color: "#e175c4", ordem: "303" },
+    { key: "x", label: "EM EMISSÃO", color: "#0f3ae6", ordem: "304" },
+    { key: "a", label: "APROVADO", color: "#3bdf30", ordem: "400" },
+    { key: "r", label: "REPROVADO", color: "#ee2f2f", ordem: "500" },
+  ];
 }
 
 export async function getPessoasPage(page: number, perPage: number, query = "") {
@@ -273,6 +487,8 @@ export async function getOrcamentoDetail(id: string) {
           o.id,
           o.identificador,
           o.cliente_pessoa_id,
+          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
+          COALESCE(s.cor, o.situacao_cor) AS situacao_cor,
           o.passageiro_count,
           o.passageiro_ids_json,
           o.updated_at,
@@ -280,6 +496,7 @@ export async function getOrcamentoDetail(id: string) {
           p.nome AS cliente_nome
         FROM orcamentos o
         LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
         WHERE o.id = ?
       `,
     )
@@ -292,6 +509,8 @@ export async function getOrcamentoDetail(id: string) {
         passageiro_count: number;
         passageiro_ids_json: string;
         raw_json: string;
+        situacao_cor: string | null;
+        situacao_nome: string | null;
         updated_at: string;
       }
     | undefined;
@@ -328,6 +547,12 @@ export async function getOrcamentoDetail(id: string) {
   return {
     ...orcamento,
     passageiros,
+    situacao_cor:
+      orcamento.situacao_cor ??
+      pickObjectString(parseRawJson(orcamento.raw_json), ["cor_situacao", "situacao_cor"]),
+    situacao_nome:
+      orcamento.situacao_nome ??
+      pickObjectString(parseRawJson(orcamento.raw_json), ["nome_situacao", "situacao_nome"]),
     raw: parseRawJson(orcamento.raw_json),
     vendas,
   };
@@ -410,6 +635,40 @@ function buildLikeWhere(query: string, columns: string[]) {
     clause: `WHERE (${columns.map((column) => `${column} LIKE ?`).join(" OR ")})`,
     params: columns.map(() => like) as unknown[],
   };
+}
+
+function getSituacaoFlowOrder(key: string, label: string) {
+  const normalizedLabel = normalizeTabKey(label);
+  const lookupKey = key || normalizedLabel;
+
+  const orderMap: Record<string, number> = {
+    e: 100,
+    "novas-solicitacoes": 100,
+    b: 103,
+    solicitado: 103,
+    "orcamento-solicitado": 103,
+    y: 200,
+    andamento: 200,
+    "cotacao-em-andamento": 200,
+    c: 300,
+    pronto: 300,
+    "orcamento-pronto": 300,
+    n: 301,
+    enviado: 301,
+    "vendedor-enviou": 301,
+    w: 302,
+    "follow-up": 302,
+    z: 303,
+    agendado: 303,
+    x: 304,
+    "em-emissao": 304,
+    a: 400,
+    aprovado: 400,
+    r: 500,
+    reprovado: 500,
+  };
+
+  return orderMap[lookupKey] ?? orderMap[normalizedLabel] ?? 9999;
 }
 
 function parseRawJson(value: string) {

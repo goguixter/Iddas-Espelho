@@ -1,5 +1,6 @@
 "use client";
 
+import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 
 export type RecordTableColumn = {
@@ -35,7 +36,7 @@ export function RecordTable({
                 </th>
               ))}
               <th className="border-b border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
-                Visualizar
+                Abrir
               </th>
             </tr>
           </thead>
@@ -48,16 +49,17 @@ export function RecordTable({
                       key={column.key}
                       className="border-b border-[var(--color-line)] px-4 py-3 text-sm text-[var(--color-ink)] last:border-b-0"
                     >
-                      {formatCell(row[column.key])}
+                      {renderCell(column.key, row[column.key], row)}
                     </td>
                   ))}
                   <td className="border-b border-[var(--color-line)] px-4 py-3 text-right last:border-b-0">
                     {hrefBase ? (
                       <Link
                         href={`${hrefBase}/${row.id}`}
-                        className="rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-accent-soft)]"
+                        aria-label={`Abrir ${row.id ?? "registro"}`}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-accent-soft)]"
                       >
-                        Visualizar
+                        <ExternalLink className="h-4 w-4" />
                       </Link>
                     ) : (
                       <span className="text-sm text-[var(--color-faint)]">—</span>
@@ -82,10 +84,79 @@ export function RecordTable({
   );
 }
 
+function renderCell(
+  key: string,
+  value: string | number | null | undefined,
+  row: RecordTableRow,
+) {
+  if (key === "identificador" || key === "orcamento_identificador") {
+    const orcamentoId =
+      key === "identificador"
+        ? row.id
+        : row.orcamento_id;
+
+    return (
+      <span className="inline-flex">
+        {orcamentoId ? (
+          <Link
+            href={`/orcamentos/${String(orcamentoId)}`}
+            className="inline-flex rounded-full border border-[var(--color-accent)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-accent)] transition hover:bg-[var(--color-accent-soft)]"
+          >
+            {formatCell(value)}
+          </Link>
+        ) : (
+          <span className="inline-flex rounded-full border border-[var(--color-accent)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-accent)]">
+            {formatCell(value)}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  if (key === "situacao_nome") {
+    return (
+      <span
+        className="inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]"
+        style={{
+          backgroundColor: formatHexColor(row.situacao_cor) ?? "var(--color-panel)",
+          color: getReadableTextColor(formatHexColor(row.situacao_cor)),
+        }}
+      >
+        {formatCell(value)}
+      </span>
+    );
+  }
+
+  return formatCell(value);
+}
+
 function formatCell(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
     return "—";
   }
 
   return String(value);
+}
+
+function formatHexColor(value: string | number | null | undefined) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : null;
+}
+
+function getReadableTextColor(background: string | null) {
+  if (!background) {
+    return "var(--color-ink)";
+  }
+
+  const hex = background.slice(1);
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+
+  return luminance > 160 ? "#0f172a" : "#ffffff";
 }

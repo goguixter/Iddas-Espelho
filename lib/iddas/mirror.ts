@@ -13,6 +13,7 @@ import {
   extractPersonIdsFromOrcamento,
   normalizeOrcamento,
   normalizePessoa,
+  normalizeSituacao,
   normalizeVenda,
 } from "@/lib/iddas/normalizers";
 import { logSync } from "@/lib/sync/logger";
@@ -26,6 +27,9 @@ const upsertOrcamento = db.prepare(`
     id,
     identificador,
     cliente_pessoa_id,
+    situacao_codigo,
+    situacao_nome,
+    situacao_cor,
     passageiro_ids_json,
     passageiro_count,
     raw_json,
@@ -36,6 +40,9 @@ const upsertOrcamento = db.prepare(`
     @id,
     @identificador,
     @cliente_pessoa_id,
+    @situacao_codigo,
+    @situacao_nome,
+    @situacao_cor,
     @passageiro_ids_json,
     @passageiro_count,
     @raw_json,
@@ -45,6 +52,9 @@ const upsertOrcamento = db.prepare(`
   ON CONFLICT(id) DO UPDATE SET
     identificador = excluded.identificador,
     cliente_pessoa_id = excluded.cliente_pessoa_id,
+    situacao_codigo = excluded.situacao_codigo,
+    situacao_nome = excluded.situacao_nome,
+    situacao_cor = excluded.situacao_cor,
     passageiro_ids_json = excluded.passageiro_ids_json,
     passageiro_count = excluded.passageiro_count,
     raw_json = excluded.raw_json,
@@ -103,6 +113,43 @@ const upsertVenda = db.prepare(`
     orcamento_id = excluded.orcamento_id,
     orcamento_identificador = excluded.orcamento_identificador,
     status = excluded.status,
+    raw_json = excluded.raw_json,
+    updated_at = excluded.updated_at,
+    synced_at = excluded.synced_at
+`);
+
+const upsertSituacao = db.prepare(`
+  INSERT INTO situacoes (
+    id,
+    codigo,
+    nome,
+    cor,
+    ordem,
+    situacao_final,
+    situacao_padrao,
+    raw_json,
+    updated_at,
+    synced_at
+  )
+  VALUES (
+    @id,
+    @codigo,
+    @nome,
+    @cor,
+    @ordem,
+    @situacao_final,
+    @situacao_padrao,
+    @raw_json,
+    @updated_at,
+    @synced_at
+  )
+  ON CONFLICT(id) DO UPDATE SET
+    codigo = excluded.codigo,
+    nome = excluded.nome,
+    cor = excluded.cor,
+    ordem = excluded.ordem,
+    situacao_final = excluded.situacao_final,
+    situacao_padrao = excluded.situacao_padrao,
     raw_json = excluded.raw_json,
     updated_at = excluded.updated_at,
     synced_at = excluded.synced_at
@@ -187,6 +234,22 @@ async function runSync(input?: {
       vendas_created: 0,
       vendas_synced: 0,
     });
+
+    updateSyncStateRecord({
+      current_item_id: null,
+      current_page: 1,
+      current_stage: "Sincronizando situações",
+    });
+
+    const situacoes = await fetchIddasList("situacao", 1, 100);
+    logSync("info", "sync.situacoes.page", {
+      page: 1,
+      returned: situacoes.length,
+    });
+
+    for (const situacao of situacoes) {
+      upsertSituacao.run(normalizeSituacao(situacao, now));
+    }
 
     for (
       let orcamentoPage = startOrcamentoPage;

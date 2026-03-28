@@ -13,6 +13,9 @@ export type OrcamentoRecord = {
   passageiro_count: number;
   passageiro_ids_json: string;
   raw_json: string;
+  situacao_codigo: string | null;
+  situacao_cor: string | null;
+  situacao_nome: string | null;
   synced_at: string;
   updated_at: string;
 };
@@ -33,6 +36,19 @@ export type VendaRecord = {
   orcamento_identificador: string | null;
   raw_json: string;
   status: string | null;
+  synced_at: string;
+  updated_at: string;
+};
+
+export type SituacaoRecord = {
+  codigo: string | null;
+  cor: string | null;
+  id: string;
+  nome: string | null;
+  ordem: string | null;
+  raw_json: string;
+  situacao_final: string | null;
+  situacao_padrao: string | null;
   synced_at: string;
   updated_at: string;
 };
@@ -60,9 +76,36 @@ export function normalizeOrcamento(detail: IddasObject, syncedAt: string): Orcam
       readString(detail.codigo) ??
       readString(detail.orcamento),
     cliente_pessoa_id: clientePessoaId,
+    situacao_codigo:
+      readString(detail.situacao) ??
+      readString(detail.codigo_situacao),
+    situacao_cor:
+      readString(detail.cor_situacao) ??
+      readString(detail.situacao_cor),
+    situacao_nome:
+      readString(detail.nome_situacao) ??
+      readString(detail.situacao_nome),
     passageiro_ids_json: JSON.stringify(passageiroPessoaIds),
     passageiro_count: passengerCount,
     raw_json: JSON.stringify(detail),
+    updated_at:
+      readString(detail.updated_at) ??
+      readString(detail.data_alteracao) ??
+      syncedAt,
+    synced_at: syncedAt,
+  };
+}
+
+export function normalizeSituacao(detail: IddasObject, syncedAt: string): SituacaoRecord {
+  return {
+    codigo: readString(detail.codigo),
+    cor: readString(detail.cor),
+    id: requireString(readId(detail), "situacao.id"),
+    nome: readString(detail.nome),
+    ordem: readString(detail.ordem),
+    raw_json: JSON.stringify(detail),
+    situacao_final: readString(detail.situacao_final),
+    situacao_padrao: readString(detail.situacao_padrao),
     updated_at:
       readString(detail.updated_at) ??
       readString(detail.data_alteracao) ??

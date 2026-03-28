@@ -16,14 +16,21 @@ instance.pragma("journal_mode = WAL");
 
 export const db = instance;
 
+runMigrations();
+
 if (!globalForDb.iddasDb) {
   globalForDb.iddasDb = db;
+}
 
+function runMigrations() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS orcamentos (
       id TEXT PRIMARY KEY,
       identificador TEXT,
       cliente_pessoa_id TEXT,
+      situacao_codigo TEXT,
+      situacao_nome TEXT,
+      situacao_cor TEXT,
       passageiro_ids_json TEXT NOT NULL DEFAULT '[]',
       passageiro_count INTEGER NOT NULL DEFAULT 0,
       raw_json TEXT NOT NULL,
@@ -33,6 +40,22 @@ if (!globalForDb.iddasDb) {
 
     CREATE INDEX IF NOT EXISTS idx_orcamentos_identificador
       ON orcamentos (identificador);
+
+    CREATE TABLE IF NOT EXISTS situacoes (
+      id TEXT PRIMARY KEY,
+      codigo TEXT UNIQUE,
+      nome TEXT,
+      cor TEXT,
+      ordem TEXT,
+      situacao_final TEXT,
+      situacao_padrao TEXT,
+      raw_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      synced_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_situacoes_codigo
+      ON situacoes (codigo);
 
     CREATE TABLE IF NOT EXISTS pessoas (
       id TEXT PRIMARY KEY,
@@ -87,6 +110,17 @@ if (!globalForDb.iddasDb) {
   ensureColumn("sync_state", "current_item_id", "TEXT");
   ensureColumn("sync_state", "cancel_requested", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("sync_state", "running_started_at", "TEXT");
+  ensureColumn("orcamentos", "situacao_codigo", "TEXT");
+  ensureColumn("orcamentos", "situacao_nome", "TEXT");
+  ensureColumn("orcamentos", "situacao_cor", "TEXT");
+  ensureIndex(
+    "idx_orcamentos_situacao_codigo",
+    "CREATE INDEX IF NOT EXISTS idx_orcamentos_situacao_codigo ON orcamentos (situacao_codigo)",
+  );
+  ensureIndex(
+    "idx_situacoes_codigo",
+    "CREATE INDEX IF NOT EXISTS idx_situacoes_codigo ON situacoes (codigo)",
+  );
 
   db.prepare(
     `
@@ -131,4 +165,8 @@ function ensureColumn(table: string, column: string, definition: string) {
       }
     }
   }
+}
+
+function ensureIndex(_name: string, sql: string) {
+  db.exec(sql);
 }

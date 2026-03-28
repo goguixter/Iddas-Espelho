@@ -20,12 +20,9 @@ export default async function VendasPage({
     <EntityListPage
       basePath="/vendas"
       columns={[
-        { key: "id", label: "ID" },
         { key: "orcamento_identificador", label: "Orçamento" },
         { key: "cliente_nome", label: "Cliente" },
         { key: "status", label: "Status" },
-        { key: "orcamento_id", label: "ID orçamento" },
-        { key: "updated_at", label: "Atualizado" },
       ]}
       currentPage={page}
       currentQuery={query}

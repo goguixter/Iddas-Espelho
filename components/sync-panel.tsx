@@ -98,7 +98,7 @@ export function SyncPanel({ syncState }: { syncState: SyncStateRecord }) {
   const running = state.status === "running";
 
   return (
-    <aside className="rounded-[28px] border border-white/50 bg-[var(--color-surface)] p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+    <aside className="rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-6 shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
         Status do sync
       </p>

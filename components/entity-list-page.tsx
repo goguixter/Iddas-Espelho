@@ -34,7 +34,7 @@ export function EntityListPage({
   title: string;
 }) {
   return (
-    <section className="flex h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-[28px] border border-white/50 bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+    <section className="flex h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
       <div className="mb-4">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
           {eyebrow}
