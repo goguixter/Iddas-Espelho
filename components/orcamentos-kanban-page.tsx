@@ -29,7 +29,7 @@ export function OrcamentosKanbanPage({
   total: number;
 }) {
   return (
-    <section className="flex h-[calc(100vh-8rem)] flex-col overflow-hidden bg-transparent">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
       <div className="mb-4">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
           Orçamentos
@@ -71,7 +71,7 @@ export function OrcamentosKanbanPage({
         })}
       </div>
 
-      <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden border-x border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4">
         <SearchableRecordTable
           columns={columns}
           currentQuery={currentQuery}
@@ -82,7 +82,7 @@ export function OrcamentosKanbanPage({
         />
       </div>
 
-      <div className="shrink-0">
+      <div className="shrink-0 rounded-b-[24px] border-x border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4">
         <Pagination
           basePath="/orcamentos"
           currentPage={currentPage}

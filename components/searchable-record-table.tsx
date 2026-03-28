@@ -67,15 +67,15 @@ export function SearchableRecordTable({
   }, [currentQuery, deferredQuery, pathname, router, searchParams]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-2.5">
       <label className="relative block shrink-0">
-        <Search className="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-[var(--color-faint)]" />
+        <Search className="pointer-events-none absolute top-1/2 left-3.5 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-faint)]" />
         <input
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] py-3 pr-4 pl-11 text-sm text-[var(--color-ink)] outline-none transition placeholder:text-[var(--color-faint)] focus:border-[var(--color-accent)]"
+          className="w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] py-2.5 pr-4 pl-10 text-[13px] text-[var(--color-ink)] outline-none transition placeholder:text-[var(--color-faint)] focus:border-[var(--color-accent)]"
         />
       </label>
 

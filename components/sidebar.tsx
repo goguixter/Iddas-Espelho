@@ -36,20 +36,20 @@ export function Sidebar({
     >
       <div className={`mb-4 flex items-center ${collapsed ? "justify-center" : "justify-between"}`}>
         {!collapsed ? (
-          <span className="px-2 text-xs font-semibold uppercase tracking-[0.28em] text-[var(--color-accent-strong)]">
+          <span className="px-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--color-accent-strong)]">
             IDDAS
           </span>
         ) : null}
         <button
           type="button"
           onClick={onToggle}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--color-line)] bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-[var(--color-line)] bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
         >
           {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-3.5 w-3.5" />
           ) : (
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-3.5 w-3.5" />
           )}
         </button>
       </div>
@@ -62,14 +62,14 @@ export function Sidebar({
             <Link
               key={href}
               href={href}
-              className={`flex items-center rounded-2xl px-3 py-3 text-sm font-medium transition ${
+              className={`flex items-center rounded-2xl px-3 py-2.5 text-[13px] font-medium transition ${
                 active
                   ? "bg-[var(--color-accent)] text-slate-950 shadow-[0_12px_32px_rgba(251,191,36,0.28)]"
                   : "text-slate-300 hover:bg-white/6 hover:text-white"
               }`}
               title={collapsed ? label : undefined}
             >
-              <Icon className={`h-4 w-4 shrink-0 ${collapsed ? "mx-auto" : ""}`} />
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${collapsed ? "mx-auto" : ""}`} />
               {!collapsed ? <span className="ml-3 truncate">{label}</span> : null}
             </Link>
           );

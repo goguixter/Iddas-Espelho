@@ -1,7 +1,7 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export type RecordTableColumn = {
   key: string;
@@ -21,6 +21,8 @@ export function RecordTable({
   rows: RecordTableRow[];
   emptyLabel: string;
 }) {
+  const router = useRouter();
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[var(--color-line)]">
       <div className="table-scroll min-h-0 flex-1 overflow-auto">
@@ -30,48 +32,40 @@ export function RecordTable({
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className="border-b border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]"
+                  className="border-b border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-muted)]"
                 >
                   {column.label}
                 </th>
               ))}
-              <th className="border-b border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
-                Abrir
-              </th>
             </tr>
           </thead>
           <tbody className="bg-[var(--color-surface)]">
             {rows.length > 0 ? (
               rows.map((row, index) => (
-                <tr key={`${row.id ?? index}`}>
+                <tr
+                  key={`${row.id ?? index}`}
+                  className={hrefBase ? "cursor-pointer transition hover:bg-white/3" : undefined}
+                  onClick={() => {
+                    if (hrefBase && row.id) {
+                      router.push(`${hrefBase}/${row.id}`);
+                    }
+                  }}
+                >
                   {columns.map((column) => (
                     <td
                       key={column.key}
-                      className="border-b border-[var(--color-line)] px-4 py-3 text-sm text-[var(--color-ink)] last:border-b-0"
+                      className="border-b border-[var(--color-line)] px-4 py-1.5 text-[12px] text-[var(--color-ink)]"
                     >
                       {renderCell(column.key, row[column.key], row)}
                     </td>
                   ))}
-                  <td className="border-b border-[var(--color-line)] px-4 py-3 text-right last:border-b-0">
-                    {hrefBase ? (
-                      <Link
-                        href={`${hrefBase}/${row.id}`}
-                        aria-label={`Abrir ${row.id ?? "registro"}`}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-accent-soft)]"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Link>
-                    ) : (
-                      <span className="text-sm text-[var(--color-faint)]">—</span>
-                    )}
-                  </td>
                 </tr>
               ))
             ) : (
               <tr>
                 <td
-                  className="px-4 py-10 text-center text-sm text-[var(--color-muted)]"
-                  colSpan={columns.length + 1}
+                  className="px-4 py-8 text-center text-[13px] text-[var(--color-muted)]"
+                  colSpan={columns.length}
                 >
                   {emptyLabel}
                 </td>
@@ -94,18 +88,24 @@ function renderCell(
       key === "identificador"
         ? row.id
         : row.orcamento_id;
+    const identifierColor = formatHexColor(row.situacao_cor) ?? "var(--color-accent)";
 
     return (
       <span className="inline-flex">
         {orcamentoId ? (
           <Link
             href={`/orcamentos/${String(orcamentoId)}`}
-            className="inline-flex rounded-full border border-[var(--color-accent)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-accent)] transition hover:bg-[var(--color-accent-soft)]"
+            className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] transition"
+            onClick={(event) => event.stopPropagation()}
+            style={{ borderColor: identifierColor, color: identifierColor }}
           >
             {formatCell(value)}
           </Link>
         ) : (
-          <span className="inline-flex rounded-full border border-[var(--color-accent)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-accent)]">
+          <span
+            className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
+            style={{ borderColor: identifierColor, color: identifierColor }}
+          >
             {formatCell(value)}
           </span>
         )}
@@ -116,7 +116,7 @@ function renderCell(
   if (key === "situacao_nome") {
     return (
       <span
-        className="inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]"
+        className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
         style={{
           backgroundColor: formatHexColor(row.situacao_cor) ?? "var(--color-panel)",
           color: getReadableTextColor(formatHexColor(row.situacao_cor)),

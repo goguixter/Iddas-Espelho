@@ -31,14 +31,14 @@ export function Pagination({
   });
 
   return (
-    <div className="mt-4 flex items-center justify-between gap-4">
-      <p className="text-sm text-[var(--color-muted)]">
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[13px] text-[var(--color-muted)]">
         Página {currentPage} de {totalPages}
       </p>
       <div className="flex gap-2">
         <Link
           href={previousHref}
-          className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+          className={`rounded-2xl px-4 py-2 text-[13px] font-medium transition ${
             currentPage === 1
               ? "pointer-events-none border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-faint)]"
               : "border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.22)] hover:border-[var(--color-accent)] hover:shadow-[0_12px_32px_rgba(251,191,36,0.18)]"
@@ -48,7 +48,7 @@ export function Pagination({
         </Link>
         <Link
           href={nextHref}
-          className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+          className={`rounded-2xl px-4 py-2 text-[13px] font-medium transition ${
             currentPage >= totalPages
               ? "pointer-events-none border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-faint)]"
               : "border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.22)] hover:border-[var(--color-accent)] hover:shadow-[0_12px_32px_rgba(251,191,36,0.18)]"
