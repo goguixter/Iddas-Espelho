@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { buildListHref } from "@/lib/list-navigation";
 
 export function Pagination({
   basePath,
@@ -16,18 +17,18 @@ export function Pagination({
   perPage: number;
 }) {
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
-  const previousHref = buildPageHref(
+  const previousHref = buildListHref({
     basePath,
-    Math.max(1, currentPage - 1),
-    query,
     extraParams,
-  );
-  const nextHref = buildPageHref(
+    page: Math.max(1, currentPage - 1),
+    query,
+  });
+  const nextHref = buildListHref({
     basePath,
-    Math.min(totalPages, currentPage + 1),
-    query,
     extraParams,
-  );
+    page: Math.min(totalPages, currentPage + 1),
+    query,
+  });
 
   return (
     <div className="mt-4 flex items-center justify-between gap-4">
@@ -58,27 +59,4 @@ export function Pagination({
       </div>
     </div>
   );
-}
-
-function buildPageHref(
-  basePath: string,
-  page: number,
-  query?: string,
-  extraParams?: Record<string, string | undefined>,
-) {
-  const params = new URLSearchParams({ page: String(page) });
-
-  if (query?.trim()) {
-    params.set("q", query.trim());
-  }
-
-  if (extraParams) {
-    for (const [key, value] of Object.entries(extraParams)) {
-      if (value?.trim()) {
-        params.set(key, value.trim());
-      }
-    }
-  }
-
-  return `${basePath}?${params.toString()}`;
 }

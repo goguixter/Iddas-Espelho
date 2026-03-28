@@ -1,19 +1,14 @@
 import { EntityListPage } from "@/components/entity-list-page";
 import { LIST_PAGE_SIZE } from "@/lib/constants";
-import {
-  getVendasPage,
-  parsePageParam,
-  parseSearchParam,
-} from "@/lib/queries";
+import { readBaseListParams } from "@/lib/list-navigation";
+import { getVendasPage } from "@/lib/queries";
 
 export default async function VendasPage({
   searchParams,
 }: {
   searchParams: Promise<{ page?: string; q?: string }>;
 }) {
-  const params = await searchParams;
-  const page = parsePageParam(params.page);
-  const query = parseSearchParam(params.q);
+  const { page, query } = await readBaseListParams(searchParams);
   const result = await getVendasPage(page, LIST_PAGE_SIZE, query);
 
   return (

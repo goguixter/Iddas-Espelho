@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Pagination } from "@/components/pagination";
 import { SearchableRecordTable } from "@/components/searchable-record-table";
 import type { RecordTableColumn, RecordTableRow } from "@/components/record-table";
+import { buildListHref } from "@/lib/list-navigation";
 
 type Tab = {
   color: string | null;
@@ -41,7 +42,11 @@ export function OrcamentosKanbanPage({
       <div className="flex items-end gap-0.5 border-b border-[var(--color-line)] px-0 pt-2">
         {tabs.map((tab) => {
           const active = tab.key === activeSituacao;
-          const href = buildTabHref("/orcamentos", tab.key, currentQuery);
+          const href = buildListHref({
+            basePath: "/orcamentos",
+            extraParams: { situacao: tab.key },
+            query: currentQuery,
+          });
 
           return (
             <Link
@@ -89,16 +94,6 @@ export function OrcamentosKanbanPage({
       </div>
     </section>
   );
-}
-
-function buildTabHref(basePath: string, situacao: string, query: string) {
-  const params = new URLSearchParams({ situacao });
-
-  if (query.trim()) {
-    params.set("q", query.trim());
-  }
-
-  return `${basePath}?${params.toString()}`;
 }
 
 function normalizeColor(value: string | null) {
