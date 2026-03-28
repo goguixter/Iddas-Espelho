@@ -34,7 +34,7 @@ export function EntityListPage({
   title: string;
 }) {
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
       <div className="mb-4">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
           {eyebrow}
@@ -44,7 +44,7 @@ export function EntityListPage({
         </h1>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-t-[24px] border border-b-0 border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4">
         <SearchableRecordTable
           columns={columns}
           currentQuery={currentQuery}
@@ -55,7 +55,7 @@ export function EntityListPage({
         />
       </div>
 
-      <div className="shrink-0">
+      <div className="shrink-0 rounded-b-[24px] border-x border-b border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3 xl:px-4">
         <Pagination
           basePath={basePath}
           currentPage={currentPage}

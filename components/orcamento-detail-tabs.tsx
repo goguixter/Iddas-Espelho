@@ -275,14 +275,98 @@ function ValoresTab({ raw }: { raw: Record<string, unknown> | null }) {
   const valores = readObjectArray(raw?.valores);
 
   if (valores.length === 0) {
-    return <PlaceholderPanel title="Valores" description="Implementaremos esta visualização depois." />;
+    return <EmptyPanel title="Valores" label="Nenhum valor encontrado no payload." />;
   }
 
+  const rows = valores.map((value, index) => ({
+    id: readText(value, ["id"]) ?? String(index + 1),
+    nome: resolveValorNome(value, "orcamento"),
+    parcelas: readText(value, ["parcelas"]),
+    pessoaId: readText(value, ["id_pessoa"]),
+    tipo: readText(value, ["tipo"]),
+    valor: resolveValorAmount(value, raw, "orcamento"),
+    vencimento: readText(value, ["vencimento"]),
+  }));
+
   return (
-    <PlaceholderPanel
-      title="Valores"
-      description={`Payload já contém ${valores.length} registro(s), mas a visualização detalhada ficará para a próxima etapa.`}
-    />
+    <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold tracking-[-0.03em] text-[var(--color-ink)]">
+            Valores
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            {rows.length} registro(s) financeiros encontrados no payload do IDDAS.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--color-line)]">
+        <div className="table-scroll max-h-[55vh] overflow-auto">
+          <table className="min-w-full border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-[var(--color-panel)]">
+              <tr>
+                {[
+                  "Tipo",
+                  "Descrição",
+                  "Pessoa",
+                  "Vencimento",
+                  "Parcelas",
+                  "Valor",
+                ].map((label) => (
+                  <th
+                    key={label}
+                    className="border-b border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-faint)]"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="bg-[var(--color-surface)]">
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="border-b border-[var(--color-line)] px-4 py-3 text-sm text-[var(--color-ink)]">
+                    <span className="inline-flex rounded-full border border-[var(--color-line)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-ink)]">
+                      {row.tipo ?? "—"}
+                    </span>
+                  </td>
+                  <td className="border-b border-[var(--color-line)] px-4 py-3 text-sm text-[var(--color-ink)]">
+                    <div>
+                      <p>{row.nome}</p>
+                      <p className="mt-1 text-xs text-[var(--color-faint)]">
+                        ID {row.id}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="border-b border-[var(--color-line)] px-4 py-3 text-sm text-[var(--color-ink)]">
+                    {row.pessoaId ? (
+                      <Link
+                        href={`/pessoas/${row.pessoaId}`}
+                        className="inline-flex rounded-full border border-[var(--color-line)] px-2.5 py-1 text-[11px] font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)]"
+                      >
+                        {row.pessoaId}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="border-b border-[var(--color-line)] px-4 py-3 text-sm text-[var(--color-ink)]">
+                    {row.vencimento ?? "—"}
+                  </td>
+                  <td className="border-b border-[var(--color-line)] px-4 py-3 text-sm text-[var(--color-ink)]">
+                    {row.parcelas ?? "—"}
+                  </td>
+                  <td className="border-b border-[var(--color-line)] px-4 py-3 text-sm font-medium text-[var(--color-ink)]">
+                    {row.valor}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -465,4 +549,79 @@ function readableTextColor(background: string | null) {
   const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
 
   return luminance > 160 ? "#0f172a" : "#ffffff";
+}
+
+function readCurrency(input: unknown) {
+  const normalized = readNumericValue(input);
+
+  if (normalized === null) {
+    return "—";
+  }
+
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(normalized);
+}
+
+function readNumericValue(input: unknown) {
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return input;
+  }
+
+  const stringValue = readString(input);
+  if (!stringValue) {
+    return null;
+  }
+
+  const normalized = stringValue
+    .replace(/\s+/g, "")
+    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveValorAmount(
+  value: Record<string, unknown>,
+  raw: Record<string, unknown> | null,
+  context: "orcamento" | "venda",
+) {
+  const directValue = readNumericValue(value["valor"]);
+  if (directValue !== null) {
+    return readCurrency(directValue);
+  }
+
+  const tipo = readText(value, ["tipo"]);
+  if (tipo === "R" && raw) {
+    const fallbackValue =
+      context === "venda"
+        ? readNumericValue(raw.venda) ?? readNumericValue(raw.valor)
+        : readNumericValue(raw.valor) ?? readNumericValue(raw.orcado);
+
+    if (fallbackValue !== null) {
+      return readCurrency(fallbackValue);
+    }
+  }
+
+  return "—";
+}
+
+function resolveValorNome(
+  value: Record<string, unknown>,
+  context: "orcamento" | "venda",
+) {
+  const nome = readText(value, ["nome"]);
+  if (nome) {
+    return nome;
+  }
+
+  const tipo = readText(value, ["tipo"]);
+
+  if (tipo === "R") {
+    return context === "venda" ? "Valor da venda" : "Valor orçado";
+  }
+
+  return "Sem descrição";
 }

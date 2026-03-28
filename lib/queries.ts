@@ -169,6 +169,10 @@ export async function getOrcamentosKanbanPage(
       row.situacao_codigo ??
       pickObjectString(raw, ["situacao", "codigo_situacao"]);
     const situacaoKey = normalizeTabKey(situacaoCodigo ?? situacaoNome ?? "sem-situacao");
+    const rawObject =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : null;
 
     return {
       cliente_nome: row.cliente_nome ?? pickObjectString(raw, ["nome_cliente", "cliente_nome"]),
@@ -185,6 +189,11 @@ export async function getOrcamentosKanbanPage(
       tag: row.identificador,
       telefone_cliente: pickObjectString(raw, ["telefone_cliente", "celular_cliente"]),
       updated_at: row.updated_at,
+      valor_total: formatCurrencyValue(
+        pickObjectString(raw, ["valor", "orcado"]) ??
+          rawObject?.valor ??
+          rawObject?.orcado,
+      ),
     };
   });
 
@@ -425,6 +434,10 @@ export async function getVendasPage(page: number, perPage: number, query = "") {
         pickObjectString(raw, ["telefone_cliente", "telefone"]) ??
         pickObjectString(orcamentoRaw, ["telefone_cliente"]),
       updated_at: row.updated_at,
+      valor_total: formatCurrencyValue(
+        pickObjectString(raw, ["venda", "valor"]) ??
+          pickObjectString(orcamentoRaw, ["venda", "valor"]),
+      ),
     };
   });
 
@@ -703,4 +716,40 @@ function pickObjectString(
   }
 
   return null;
+}
+
+function formatCurrencyValue(input: unknown) {
+  const numericValue = parseNumericValue(input);
+
+  if (numericValue === null) {
+    return "—";
+  }
+
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(numericValue);
+}
+
+function parseNumericValue(input: unknown) {
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return input;
+  }
+
+  if (typeof input !== "string") {
+    return null;
+  }
+
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed
+    .replace(/\s+/g, "")
+    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }

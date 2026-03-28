@@ -17,6 +17,7 @@ export default async function OrcamentosPage({
       columns={[
         { key: "identificador", label: "Identificador" },
         { key: "cliente_nome", label: "Cliente" },
+        { key: "valor_total", label: "Valor" },
         { key: "passageiro_count", label: "Passageiros" },
       ]}
       currentPage={page}

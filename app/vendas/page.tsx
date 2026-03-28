@@ -17,6 +17,7 @@ export default async function VendasPage({
       columns={[
         { key: "orcamento_identificador", label: "Orçamento" },
         { key: "cliente_nome", label: "Cliente" },
+        { key: "valor_total", label: "Valor" },
         { key: "status", label: "Status" },
       ]}
       currentPage={page}
