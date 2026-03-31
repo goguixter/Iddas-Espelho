@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import {
   isIddasSyncRunning,
   requestCancelIddasSync,
-  syncIddasMirror,
+  syncIddasScope,
 } from "@/lib/iddas/mirror";
 import { normalizeCotacaoRange } from "@/lib/iddas/date-range";
 import { getSyncState } from "@/lib/queries";
 import { logSync } from "@/lib/sync/logger";
+import type { SyncScope } from "@/lib/sync/types";
 
 export const dynamic = "force-dynamic";
 
@@ -18,17 +19,20 @@ export async function POST(request: Request) {
   try {
     const body = (await requestJson(request)) as
       | {
+          scope?: SyncScope;
           periodo_cotacao_final?: string;
           periodo_cotacao_inicio?: string;
         }
       | null;
-    const range = normalizeCotacaoRange(body ?? {});
+    const scope = normalizeScope(body?.scope);
+    const range =
+      scope === "orcamentos" ? normalizeCotacaoRange(body ?? {}) : null;
 
-    if (!isIddasSyncRunning()) {
-      logSync("info", "sync.api.start", range ?? {});
-      void syncIddasMirror(range ?? undefined).catch(() => undefined);
+    if (!isIddasSyncRunning(scope)) {
+      logSync("info", "sync.api.start", { scope, ...(range ?? {}) });
+      void syncIddasScope(scope, range ?? undefined).catch(() => undefined);
     } else {
-      logSync("info", "sync.api.already-running");
+      logSync("info", "sync.api.already-running", { scope });
     }
 
     return NextResponse.json(await getSyncState(), { status: 202 });
@@ -40,9 +44,12 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE() {
-  logSync("warn", "sync.api.cancel");
-  return NextResponse.json(requestCancelIddasSync(), { status: 202 });
+export async function DELETE(request: Request) {
+  const body = (await requestJson(request)) as { scope?: SyncScope } | null;
+  const scope = normalizeScope(body?.scope);
+
+  logSync("warn", "sync.api.cancel", { scope });
+  return NextResponse.json(requestCancelIddasSync(scope), { status: 202 });
 }
 
 async function requestJson(request: Request) {
@@ -51,4 +58,8 @@ async function requestJson(request: Request) {
   } catch {
     return null;
   }
+}
+
+function normalizeScope(scope?: SyncScope) {
+  return scope === "solicitacoes" ? "solicitacoes" : "orcamentos";
 }

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { formatCurrencyValue } from "@/lib/formatting";
-import { getSyncStateRecord } from "@/lib/sync/store";
+import { getSyncDashboardState } from "@/lib/sync/store";
 
 export function parsePageParam(input?: string | null) {
   const parsed = Number(input);
@@ -23,13 +23,14 @@ export function normalizeTabKey(value: string | null | undefined) {
 export async function getDashboardMetrics() {
   const orcamentos = readCount("orcamentos");
   const pessoas = readCount("pessoas");
+  const solicitacoes = readCount("solicitacoes");
   const vendas = readCount("vendas");
 
-  return { orcamentos, pessoas, vendas };
+  return { orcamentos, pessoas, solicitacoes, vendas };
 }
 
 export async function getSyncState() {
-  return getSyncStateRecord();
+  return getSyncDashboardState();
 }
 
 export async function getOrcamentosPage(page: number, perPage: number, query = "") {
@@ -61,7 +62,15 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
           o.passageiro_count,
           o.raw_json,
           o.updated_at,
-          p.nome AS cliente_nome
+          p.nome AS cliente_nome,
+          (
+            SELECT sl.nome
+            FROM solicitacoes sl
+            WHERE sl.linked_orcamento_id = o.id
+               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
+            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+            LIMIT 1
+          ) AS solicitacao_nome
         FROM orcamentos o
         LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
         LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
@@ -77,6 +86,7 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
       identificador: string | null;
       passageiro_count: number;
       raw_json: string;
+      solicitacao_nome: string | null;
       situacao_cor: string | null;
       situacao_nome: string | null;
       updated_at: string;
@@ -92,7 +102,10 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
       pickObjectString(raw, ["cor_situacao", "situacao_cor"]);
 
     return {
-      cliente_nome: row.cliente_nome ?? pickObjectString(raw, ["nome_cliente", "cliente_nome"]),
+      cliente_nome:
+        row.cliente_nome ??
+        pickObjectString(raw, ["nome_cliente", "cliente_nome"]) ??
+        row.solicitacao_nome,
       cliente_pessoa_id: row.cliente_pessoa_id,
       email_cliente: pickObjectString(raw, ["email_cliente"]),
       id: row.id,
@@ -136,7 +149,15 @@ export async function getOrcamentosKanbanPage(
           o.passageiro_count,
           o.raw_json,
           o.updated_at,
-          p.nome AS cliente_nome
+          p.nome AS cliente_nome,
+          (
+            SELECT sl.nome
+            FROM solicitacoes sl
+            WHERE sl.linked_orcamento_id = o.id
+               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
+            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+            LIMIT 1
+          ) AS solicitacao_nome
         FROM orcamentos o
         LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
         LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
@@ -151,6 +172,7 @@ export async function getOrcamentosKanbanPage(
       identificador: string | null;
       passageiro_count: number;
       raw_json: string;
+      solicitacao_nome: string | null;
       situacao_codigo: string | null;
       situacao_cor: string | null;
       situacao_nome: string | null;
@@ -176,7 +198,10 @@ export async function getOrcamentosKanbanPage(
         : null;
 
     return {
-      cliente_nome: row.cliente_nome ?? pickObjectString(raw, ["nome_cliente", "cliente_nome"]),
+      cliente_nome:
+        row.cliente_nome ??
+        pickObjectString(raw, ["nome_cliente", "cliente_nome"]) ??
+        row.solicitacao_nome,
       cliente_pessoa_id: row.cliente_pessoa_id,
       email_cliente: pickObjectString(raw, ["email_cliente"]),
       id: row.id,
@@ -361,6 +386,112 @@ export async function getPessoasPage(page: number, perPage: number, query = "") 
   return { items, page, perPage, total };
 }
 
+export async function getSolicitacoesPage(
+  page: number,
+  perPage: number,
+  query = "",
+  date = "",
+) {
+  const where = buildLikeWhere(query, [
+    "sl.id",
+    "sl.nome",
+    "sl.email",
+    "sl.telefone",
+    "sl.origem",
+    "sl.destino",
+    "sl.linked_orcamento_id",
+    "sl.linked_orcamento_identificador",
+    "sl.raw_json",
+    "o.situacao_nome",
+    "s.nome",
+  ]);
+  const dateFilter = buildSolicitacaoDateWhere(date, where.clause ? "AND" : "WHERE");
+  const total = readFilteredCount(
+    `
+      SELECT COUNT(*)
+      FROM solicitacoes sl
+      LEFT JOIN orcamentos o ON o.id = sl.linked_orcamento_id
+      LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
+      ${where.clause}
+      ${dateFilter.clause}
+    `,
+    [...where.params, ...dateFilter.params],
+  );
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          sl.id,
+          sl.nome,
+          sl.email,
+          sl.telefone,
+          sl.origem,
+          sl.destino,
+          sl.data_ida,
+          sl.data_volta,
+          sl.adultos,
+          sl.criancas,
+          sl.possui_flexibilidade,
+          sl.observacao,
+          sl.data_solicitacao,
+          sl.linked_orcamento_id,
+          sl.linked_orcamento_identificador,
+          sl.raw_json,
+          sl.updated_at,
+          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
+          COALESCE(s.cor, o.situacao_cor) AS situacao_cor
+        FROM solicitacoes sl
+        LEFT JOIN orcamentos o ON o.id = sl.linked_orcamento_id
+        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
+        ${where.clause}
+        ${dateFilter.clause}
+        ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+        LIMIT ? OFFSET ?
+      `,
+    )
+    .all(...where.params, ...dateFilter.params, perPage, (page - 1) * perPage) as Array<{
+      adultos: string | null;
+      criancas: string | null;
+      data_ida: string | null;
+      data_solicitacao: string | null;
+      data_volta: string | null;
+      destino: string | null;
+      email: string | null;
+      id: string;
+      linked_orcamento_id: string | null;
+      linked_orcamento_identificador: string | null;
+      nome: string | null;
+      observacao: string | null;
+      origem: string | null;
+      possui_flexibilidade: string | null;
+      raw_json: string;
+      situacao_cor: string | null;
+      situacao_nome: string | null;
+      telefone: string | null;
+      updated_at: string;
+    }>;
+
+  const items = rows.map((row) => ({
+    adultos: row.adultos,
+    data_ida: row.data_ida,
+    data_solicitacao: row.data_solicitacao,
+    destino: row.destino,
+    email: row.email,
+    id: row.id,
+    linked_orcamento_id: row.linked_orcamento_id,
+    linked_orcamento_identificador: row.linked_orcamento_identificador,
+    nome: row.nome,
+    origem: row.origem,
+    situacao_cor: row.situacao_cor,
+    situacao_nome: row.situacao_nome,
+    tag: row.linked_orcamento_identificador,
+    telefone: row.telefone,
+    updated_at: row.updated_at,
+  }));
+
+  return { items, page, perPage, total };
+}
+
 export async function getVendasPage(page: number, perPage: number, query = "") {
   const where = buildLikeWhere(query, [
     "v.id",
@@ -392,6 +523,14 @@ export async function getVendasPage(page: number, perPage: number, query = "") {
           o.cliente_pessoa_id,
           o.raw_json AS orcamento_raw_json,
           p.nome AS cliente_nome,
+          (
+            SELECT sl.nome
+            FROM solicitacoes sl
+            WHERE sl.linked_orcamento_id = o.id
+               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
+            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+            LIMIT 1
+          ) AS solicitacao_nome,
           v.raw_json AS venda_raw_json
         FROM vendas v
         LEFT JOIN orcamentos o ON o.id = v.orcamento_id
@@ -408,6 +547,7 @@ export async function getVendasPage(page: number, perPage: number, query = "") {
       orcamento_id: string;
       orcamento_identificador: string | null;
       orcamento_raw_json: string | null;
+      solicitacao_nome: string | null;
       status: string | null;
       updated_at: string;
       venda_raw_json: string;
@@ -419,7 +559,8 @@ export async function getVendasPage(page: number, perPage: number, query = "") {
     const clienteNome =
       row.cliente_nome ??
       pickObjectString(raw, ["cliente"]) ??
-      pickObjectString(orcamentoRaw, ["nome_cliente"]);
+      pickObjectString(orcamentoRaw, ["nome_cliente"]) ??
+      row.solicitacao_nome;
 
     return {
       cliente_nome: clienteNome,
@@ -493,6 +634,70 @@ export async function getPessoaDetail(id: string) {
   };
 }
 
+export async function getSolicitacaoDetail(id: string) {
+  const solicitacao = db
+    .prepare(
+      `
+        SELECT
+          sl.id,
+          sl.nome,
+          sl.email,
+          sl.telefone,
+          sl.origem,
+          sl.destino,
+          sl.data_ida,
+          sl.data_volta,
+          sl.adultos,
+          sl.criancas,
+          sl.possui_flexibilidade,
+          sl.observacao,
+          sl.data_solicitacao,
+          sl.linked_orcamento_id,
+          sl.linked_orcamento_identificador,
+          sl.updated_at,
+          sl.raw_json,
+          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
+          COALESCE(s.cor, o.situacao_cor) AS situacao_cor
+        FROM solicitacoes sl
+        LEFT JOIN orcamentos o ON o.id = sl.linked_orcamento_id
+        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
+        WHERE sl.id = ?
+      `,
+    )
+    .get(id) as
+    | {
+        adultos: string | null;
+        criancas: string | null;
+        data_ida: string | null;
+        data_solicitacao: string | null;
+        data_volta: string | null;
+        destino: string | null;
+        email: string | null;
+        id: string;
+        linked_orcamento_id: string | null;
+        linked_orcamento_identificador: string | null;
+        nome: string | null;
+        observacao: string | null;
+        origem: string | null;
+        possui_flexibilidade: string | null;
+        raw_json: string;
+        situacao_cor: string | null;
+        situacao_nome: string | null;
+        telefone: string | null;
+        updated_at: string;
+      }
+    | undefined;
+
+  if (!solicitacao) {
+    return null;
+  }
+
+  return {
+    ...solicitacao,
+    raw: parseRawJson(solicitacao.raw_json),
+  };
+}
+
 export async function getOrcamentoDetail(id: string) {
   const orcamento = db
     .prepare(
@@ -507,7 +712,15 @@ export async function getOrcamentoDetail(id: string) {
           o.passageiro_ids_json,
           o.updated_at,
           o.raw_json,
-          p.nome AS cliente_nome
+          p.nome AS cliente_nome,
+          (
+            SELECT sl.nome
+            FROM solicitacoes sl
+            WHERE sl.linked_orcamento_id = o.id
+               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
+            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+            LIMIT 1
+          ) AS solicitacao_nome
         FROM orcamentos o
         LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
         LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
@@ -523,6 +736,7 @@ export async function getOrcamentoDetail(id: string) {
         passageiro_count: number;
         passageiro_ids_json: string;
         raw_json: string;
+        solicitacao_nome: string | null;
         situacao_cor: string | null;
         situacao_nome: string | null;
         updated_at: string;
@@ -560,6 +774,10 @@ export async function getOrcamentoDetail(id: string) {
 
   return {
     ...orcamento,
+    cliente_nome:
+      orcamento.cliente_nome ??
+      pickObjectString(parseRawJson(orcamento.raw_json), ["nome_cliente", "cliente_nome"]) ??
+      orcamento.solicitacao_nome,
     passageiros,
     situacao_cor:
       orcamento.situacao_cor ??
@@ -585,7 +803,15 @@ export async function getVendaDetail(id: string) {
           v.raw_json,
           o.cliente_pessoa_id,
           o.raw_json AS orcamento_raw_json,
-          p.nome AS cliente_nome
+          p.nome AS cliente_nome,
+          (
+            SELECT sl.nome
+            FROM solicitacoes sl
+            WHERE sl.linked_orcamento_id = o.id
+               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
+            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+            LIMIT 1
+          ) AS solicitacao_nome
         FROM vendas v
         LEFT JOIN orcamentos o ON o.id = v.orcamento_id
         LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
@@ -601,6 +827,7 @@ export async function getVendaDetail(id: string) {
         orcamento_identificador: string | null;
         orcamento_raw_json: string | null;
         raw_json: string;
+        solicitacao_nome: string | null;
         status: string | null;
         updated_at: string;
       }
@@ -615,12 +842,13 @@ export async function getVendaDetail(id: string) {
     cliente_nome:
       venda.cliente_nome ??
       pickObjectString(parseRawJson(venda.raw_json), ["cliente"]) ??
-      pickObjectString(parseNullableRawJson(venda.orcamento_raw_json), ["nome_cliente"]),
+      pickObjectString(parseNullableRawJson(venda.orcamento_raw_json), ["nome_cliente"]) ??
+      venda.solicitacao_nome,
     raw: parseRawJson(venda.raw_json),
   };
 }
 
-function readCount(table: "orcamentos" | "pessoas" | "vendas") {
+function readCount(table: "orcamentos" | "pessoas" | "vendas" | "solicitacoes") {
   const row = db
     .prepare(`SELECT COUNT(*) as total FROM ${table}`)
     .get() as { total: number };
@@ -648,6 +876,22 @@ function buildLikeWhere(query: string, columns: string[]) {
   return {
     clause: `WHERE (${columns.map((column) => `${column} LIKE ?`).join(" OR ")})`,
     params: columns.map(() => like) as unknown[],
+  };
+}
+
+function buildSolicitacaoDateWhere(date: string, prefix: "WHERE" | "AND") {
+  const normalized = date.trim();
+
+  if (!normalized) {
+    return {
+      clause: "",
+      params: [] as unknown[],
+    };
+  }
+
+  return {
+    clause: ` ${prefix} substr(sl.data_solicitacao, 1, 10) = ?`,
+    params: [normalized] as unknown[],
   };
 }
 

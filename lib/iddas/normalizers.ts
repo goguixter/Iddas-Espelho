@@ -40,6 +40,27 @@ export type VendaRecord = {
   updated_at: string;
 };
 
+export type SolicitacaoRecord = {
+  adultos: string | null;
+  criancas: string | null;
+  data_ida: string | null;
+  data_solicitacao: string | null;
+  data_volta: string | null;
+  destino: string | null;
+  email: string | null;
+  id: string;
+  linked_orcamento_id: string | null;
+  linked_orcamento_identificador: string | null;
+  nome: string | null;
+  observacao: string | null;
+  origem: string | null;
+  possui_flexibilidade: string | null;
+  raw_json: string;
+  synced_at: string;
+  telefone: string | null;
+  updated_at: string;
+};
+
 export type SituacaoRecord = {
   codigo: string | null;
   cor: string | null;
@@ -159,6 +180,41 @@ export function normalizeVenda(
       readString(detail.data_alteracao) ??
       syncedAt,
     synced_at: syncedAt,
+  };
+}
+
+export function normalizeSolicitacao(
+  detail: IddasObject,
+  syncedAt: string,
+): SolicitacaoRecord {
+  return {
+    adultos:
+      readString(detail.adultos) ??
+      readString(detail.passageiro_adulto),
+    criancas:
+      readString(detail.criancas) ??
+      readString(detail.passageiro_crianca),
+    data_ida: readString(detail.data_ida),
+    data_solicitacao: readString(detail.data_solicitacao),
+    data_volta: readString(detail.data_volta),
+    destino: readString(detail.destino),
+    email: readString(detail.email),
+    id: requireString(readId(detail), "solicitacao.id"),
+    linked_orcamento_id: null,
+    linked_orcamento_identificador: null,
+    nome: readString(detail.nome),
+    observacao: readString(detail.observacao),
+    origem: readString(detail.origem),
+    possui_flexibilidade:
+      readString(detail.possui_flexibilidade) ??
+      readString(detail.flexibilidade),
+    raw_json: JSON.stringify(detail),
+    synced_at: syncedAt,
+    telefone: readString(detail.telefone),
+    updated_at:
+      readString(detail.updated_at) ??
+      readString(detail.data_solicitacao) ??
+      syncedAt,
   };
 }
 

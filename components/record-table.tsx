@@ -15,13 +15,16 @@ export function RecordTable({
   hrefBase,
   rows,
   emptyLabel,
+  onRowClick,
 }: {
   columns: RecordTableColumn[];
   hrefBase?: string;
   rows: RecordTableRow[];
   emptyLabel: string;
+  onRowClick?: (row: RecordTableRow) => void;
 }) {
   const router = useRouter();
+  const clickable = Boolean(hrefBase || onRowClick);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[var(--color-line)]">
@@ -44,8 +47,13 @@ export function RecordTable({
               rows.map((row, index) => (
                 <tr
                   key={`${row.id ?? index}`}
-                  className={hrefBase ? "cursor-pointer transition hover:bg-white/3" : undefined}
+                  className={clickable ? "cursor-pointer transition hover:bg-white/3" : undefined}
                   onClick={() => {
+                    if (onRowClick) {
+                      onRowClick(row);
+                      return;
+                    }
+
                     if (hrefBase && row.id) {
                       router.push(`${hrefBase}/${row.id}`);
                     }
@@ -83,11 +91,17 @@ function renderCell(
   value: string | number | null | undefined,
   row: RecordTableRow,
 ) {
-  if (key === "identificador" || key === "orcamento_identificador") {
+  if (
+    key === "identificador" ||
+    key === "orcamento_identificador" ||
+    key === "linked_orcamento_identificador"
+  ) {
     const orcamentoId =
       key === "identificador"
         ? row.id
-        : row.orcamento_id;
+        : key === "linked_orcamento_identificador"
+          ? row.linked_orcamento_id
+          : row.orcamento_id;
     const identifierColor = formatHexColor(row.situacao_cor) ?? "var(--color-accent)";
 
     return (

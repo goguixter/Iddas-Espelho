@@ -19,6 +19,7 @@ export function SearchableRecordTable({
   currentQuery,
   emptyLabel,
   hrefBase,
+  onRowClick,
   placeholder,
   rows,
 }: {
@@ -26,6 +27,7 @@ export function SearchableRecordTable({
   currentQuery?: string;
   emptyLabel: string;
   hrefBase?: string;
+  onRowClick?: (row: RecordTableRow) => void;
   placeholder: string;
   rows: RecordTableRow[];
 }) {
@@ -84,6 +86,7 @@ export function SearchableRecordTable({
           columns={columns}
           emptyLabel={emptyLabel}
           hrefBase={hrefBase}
+          onRowClick={onRowClick}
           rows={rows}
         />
       </div>

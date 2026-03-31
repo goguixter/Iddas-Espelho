@@ -14,6 +14,7 @@ export function SearchablePaginatedTable({
   extraParams,
   footerClassName,
   items,
+  onRowClick,
   perPage,
   placeholder,
   tableClassName,
@@ -27,6 +28,7 @@ export function SearchablePaginatedTable({
   extraParams?: Record<string, string | undefined>;
   footerClassName: string;
   items: RecordTableRow[];
+  onRowClick?: (row: RecordTableRow) => void;
   perPage: number;
   placeholder: string;
   tableClassName: string;
@@ -40,6 +42,7 @@ export function SearchablePaginatedTable({
           currentQuery={currentQuery}
           emptyLabel={emptyLabel}
           hrefBase={basePath}
+          onRowClick={onRowClick}
           placeholder={placeholder}
           rows={items}
         />

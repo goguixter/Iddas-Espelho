@@ -80,9 +80,43 @@ function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_vendas_orcamento_identificador
       ON vendas (orcamento_identificador);
 
+    CREATE TABLE IF NOT EXISTS solicitacoes (
+      id TEXT PRIMARY KEY,
+      nome TEXT,
+      email TEXT,
+      telefone TEXT,
+      origem TEXT,
+      destino TEXT,
+      data_ida TEXT,
+      data_volta TEXT,
+      adultos TEXT,
+      criancas TEXT,
+      possui_flexibilidade TEXT,
+      observacao TEXT,
+      data_solicitacao TEXT,
+      linked_orcamento_id TEXT,
+      linked_orcamento_identificador TEXT,
+      raw_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      synced_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_solicitacoes_linked_orcamento_id
+      ON solicitacoes (linked_orcamento_id);
+
+    CREATE INDEX IF NOT EXISTS idx_solicitacoes_linked_orcamento_identificador
+      ON solicitacoes (linked_orcamento_identificador);
+
     CREATE TABLE IF NOT EXISTS sync_state (
       scope TEXT PRIMARY KEY,
       last_synced_at TEXT,
+      items_synced INTEGER NOT NULL DEFAULT 0,
+      items_created INTEGER NOT NULL DEFAULT 0,
+      related_synced INTEGER NOT NULL DEFAULT 0,
+      related_created INTEGER NOT NULL DEFAULT 0,
+      secondary_synced INTEGER NOT NULL DEFAULT 0,
+      secondary_created INTEGER NOT NULL DEFAULT 0,
+      next_page INTEGER NOT NULL DEFAULT 1,
       orcamentos_synced INTEGER NOT NULL DEFAULT 0,
       people_synced INTEGER NOT NULL DEFAULT 0,
       vendas_synced INTEGER NOT NULL DEFAULT 0,
@@ -101,6 +135,13 @@ function runMigrations() {
   `);
 
   ensureColumn("sync_state", "status", "TEXT NOT NULL DEFAULT 'idle'");
+  ensureColumn("sync_state", "items_synced", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sync_state", "items_created", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sync_state", "related_synced", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sync_state", "related_created", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sync_state", "secondary_synced", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sync_state", "secondary_created", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sync_state", "next_page", "INTEGER NOT NULL DEFAULT 1");
   ensureColumn("sync_state", "orcamentos_created", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("sync_state", "people_created", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("sync_state", "vendas_created", "INTEGER NOT NULL DEFAULT 0");
@@ -121,31 +162,50 @@ function runMigrations() {
     "idx_situacoes_codigo",
     "CREATE INDEX IF NOT EXISTS idx_situacoes_codigo ON situacoes (codigo)",
   );
+  ensureColumn("solicitacoes", "linked_orcamento_id", "TEXT");
+  ensureColumn("solicitacoes", "linked_orcamento_identificador", "TEXT");
+  ensureIndex(
+    "idx_solicitacoes_linked_orcamento_id",
+    "CREATE INDEX IF NOT EXISTS idx_solicitacoes_linked_orcamento_id ON solicitacoes (linked_orcamento_id)",
+  );
+  ensureIndex(
+    "idx_solicitacoes_linked_orcamento_identificador",
+    "CREATE INDEX IF NOT EXISTS idx_solicitacoes_linked_orcamento_identificador ON solicitacoes (linked_orcamento_identificador)",
+  );
 
-  db.prepare(
-    `
-      INSERT INTO sync_state (
-        scope,
-        last_synced_at,
-        orcamentos_synced,
-        people_synced,
-        vendas_synced,
-        orcamentos_created,
-        people_created,
-        vendas_created,
-        next_orcamento_page,
-        status,
-        current_stage,
-        current_page,
-        current_item_id,
-        cancel_requested,
-        running_started_at,
-        error
-      )
-      VALUES ('global', NULL, 0, 0, 0, 0, 0, 0, 1, 'idle', NULL, NULL, NULL, 0, NULL, NULL)
-      ON CONFLICT(scope) DO NOTHING
-    `,
-  ).run();
+  for (const scope of ["global", "orcamentos", "solicitacoes"]) {
+    db.prepare(
+      `
+        INSERT INTO sync_state (
+          scope,
+          last_synced_at,
+          items_synced,
+          items_created,
+          related_synced,
+          related_created,
+          secondary_synced,
+          secondary_created,
+          next_page,
+          orcamentos_synced,
+          people_synced,
+          vendas_synced,
+          orcamentos_created,
+          people_created,
+          vendas_created,
+          next_orcamento_page,
+          status,
+          current_stage,
+          current_page,
+          current_item_id,
+          cancel_requested,
+          running_started_at,
+          error
+        )
+        VALUES (@scope, NULL, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 'idle', NULL, NULL, NULL, 0, NULL, NULL)
+        ON CONFLICT(scope) DO NOTHING
+      `,
+    ).run({ scope });
+  }
 }
 
 function ensureColumn(table: string, column: string, definition: string) {

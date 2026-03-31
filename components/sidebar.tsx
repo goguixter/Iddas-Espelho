@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Database,
   LayoutDashboard,
   Users,
@@ -13,6 +14,7 @@ import {
 
 const items = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/solicitacoes", label: "Solicitações", icon: ClipboardList },
   { href: "/orcamentos", label: "Orçamentos", icon: Database },
   { href: "/pessoas", label: "Pessoas", icon: Users },
   { href: "/vendas", label: "Vendas", icon: WalletCards },

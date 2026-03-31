@@ -1,5 +1,3 @@
-import { parsePageParam, parseSearchParam } from "@/lib/queries";
-
 type BaseListSearchParams = {
   page?: string;
   q?: string;
@@ -7,6 +5,10 @@ type BaseListSearchParams = {
 
 type OrcamentosListSearchParams = BaseListSearchParams & {
   situacao?: string;
+};
+
+type SolicitacoesListSearchParams = BaseListSearchParams & {
+  data?: string;
 };
 
 export function buildListHref({
@@ -63,4 +65,33 @@ export async function readOrcamentosListParams(
     query: parseSearchParam(params.q),
     situacao: parseSearchParam(params.situacao),
   };
+}
+
+export async function readSolicitacoesListParams(
+  searchParams: Promise<SolicitacoesListSearchParams>,
+) {
+  const params = await searchParams;
+
+  return {
+    page: parsePageParam(params.page),
+    query: parseSearchParam(params.q),
+    data: parseDateParam(params.data),
+  };
+}
+
+function parsePageParam(input?: string | null) {
+  const parsed = Number(input);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
+}
+
+function parseSearchParam(input?: string | null) {
+  return input?.trim() ?? "";
+}
+
+function parseDateParam(input?: string | null) {
+  if (!input?.trim()) {
+    return "";
+  }
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(input.trim()) ? input.trim() : "";
 }
