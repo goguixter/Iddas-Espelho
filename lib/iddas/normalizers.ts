@@ -1,4 +1,5 @@
 import type { IddasObject } from "@/lib/iddas/client";
+import { createHash } from "node:crypto";
 import {
   pickReferenceId,
   readId,
@@ -8,11 +9,17 @@ import {
 
 export type OrcamentoRecord = {
   cliente_pessoa_id: string | null;
+  detail_synced_at: string;
   id: string;
   identificador: string | null;
+  last_seen_at: string;
+  needs_detail: number;
   passageiro_count: number;
   passageiro_ids_json: string;
   raw_json: string;
+  raw_summary_json: string;
+  source_hash: string;
+  source_updated_at: string | null;
   situacao_codigo: string | null;
   situacao_cor: string | null;
   situacao_nome: string | null;
@@ -46,16 +53,22 @@ export type SolicitacaoRecord = {
   data_ida: string | null;
   data_solicitacao: string | null;
   data_volta: string | null;
+  detail_synced_at: string;
   destino: string | null;
   email: string | null;
   id: string;
+  last_seen_at: string;
   linked_orcamento_id: string | null;
   linked_orcamento_identificador: string | null;
+  needs_detail: number;
   nome: string | null;
   observacao: string | null;
   origem: string | null;
   possui_flexibilidade: string | null;
   raw_json: string;
+  raw_summary_json: string;
+  source_hash: string;
+  source_updated_at: string | null;
   synced_at: string;
   telefone: string | null;
   updated_at: string;
@@ -75,6 +88,12 @@ export type SituacaoRecord = {
 };
 
 export function normalizeOrcamento(detail: IddasObject, syncedAt: string): OrcamentoRecord {
+  const rawJson = JSON.stringify(detail);
+  const sourceUpdatedAt =
+    readString(detail.updated_at) ??
+    readString(detail.data_alteracao) ??
+    readString(detail.data_ultima_situacao) ??
+    readString(detail.data_orcamento);
   const clientePessoaId = pickReferenceId(detail, [
     "cliente",
     "cliente.pessoa_id",
@@ -108,11 +127,76 @@ export function normalizeOrcamento(detail: IddasObject, syncedAt: string): Orcam
       readString(detail.situacao_nome),
     passageiro_ids_json: JSON.stringify(passageiroPessoaIds),
     passageiro_count: passengerCount,
-    raw_json: JSON.stringify(detail),
-    updated_at:
-      readString(detail.updated_at) ??
-      readString(detail.data_alteracao) ??
-      syncedAt,
+    raw_summary_json: rawJson,
+    raw_json: rawJson,
+    source_hash: hashPayload(rawJson),
+    source_updated_at: sourceUpdatedAt,
+    last_seen_at: syncedAt,
+    detail_synced_at: syncedAt,
+    needs_detail: 0,
+    updated_at: sourceUpdatedAt ?? syncedAt,
+    synced_at: syncedAt,
+  };
+}
+
+export function normalizeOrcamentoSummary(
+  summary: IddasObject,
+  syncedAt: string,
+): Pick<
+  OrcamentoRecord,
+  | "cliente_pessoa_id"
+  | "id"
+  | "identificador"
+  | "last_seen_at"
+  | "needs_detail"
+  | "raw_json"
+  | "raw_summary_json"
+  | "source_hash"
+  | "source_updated_at"
+  | "situacao_codigo"
+  | "situacao_cor"
+  | "situacao_nome"
+  | "synced_at"
+  | "updated_at"
+> {
+  const rawSummaryJson = JSON.stringify(summary);
+  const sourceUpdatedAt =
+    readString(summary.updated_at) ??
+    readString(summary.data_alteracao) ??
+    readString(summary.data_ultima_situacao) ??
+    readString(summary.data_orcamento);
+
+  return {
+    id: requireString(readId(summary), "orcamento.id"),
+    identificador:
+      readString(summary.identificador) ??
+      readString(summary.codigo) ??
+      readString(summary.orcamento),
+    cliente_pessoa_id: pickReferenceId(summary, [
+      "cliente",
+      "cliente.pessoa_id",
+      "cliente.id",
+      "cliente_id",
+      "pessoa",
+      "pessoa.id",
+      "pessoa_id",
+    ]),
+    situacao_codigo:
+      readString(summary.situacao) ??
+      readString(summary.codigo_situacao),
+    situacao_cor:
+      readString(summary.cor_situacao) ??
+      readString(summary.situacao_cor),
+    situacao_nome:
+      readString(summary.nome_situacao) ??
+      readString(summary.situacao_nome),
+    raw_summary_json: rawSummaryJson,
+    raw_json: rawSummaryJson,
+    source_hash: hashPayload(rawSummaryJson),
+    source_updated_at: sourceUpdatedAt,
+    last_seen_at: syncedAt,
+    needs_detail: 0,
+    updated_at: sourceUpdatedAt ?? syncedAt,
     synced_at: syncedAt,
   };
 }
@@ -187,6 +271,10 @@ export function normalizeSolicitacao(
   detail: IddasObject,
   syncedAt: string,
 ): SolicitacaoRecord {
+  const rawJson = JSON.stringify(detail);
+  const sourceUpdatedAt =
+    readString(detail.updated_at) ??
+    readString(detail.data_solicitacao);
   return {
     adultos:
       readString(detail.adultos) ??
@@ -208,13 +296,83 @@ export function normalizeSolicitacao(
     possui_flexibilidade:
       readString(detail.possui_flexibilidade) ??
       readString(detail.flexibilidade),
-    raw_json: JSON.stringify(detail),
+    raw_summary_json: rawJson,
+    raw_json: rawJson,
+    source_hash: hashPayload(rawJson),
+    source_updated_at: sourceUpdatedAt,
+    last_seen_at: syncedAt,
+    detail_synced_at: syncedAt,
+    needs_detail: 0,
     synced_at: syncedAt,
     telefone: readString(detail.telefone),
-    updated_at:
-      readString(detail.updated_at) ??
-      readString(detail.data_solicitacao) ??
-      syncedAt,
+    updated_at: sourceUpdatedAt ?? syncedAt,
+  };
+}
+
+export function normalizeSolicitacaoSummary(
+  summary: IddasObject,
+  syncedAt: string,
+): Pick<
+  SolicitacaoRecord,
+  | "adultos"
+  | "criancas"
+  | "data_ida"
+  | "data_solicitacao"
+  | "data_volta"
+  | "destino"
+  | "email"
+  | "id"
+  | "last_seen_at"
+  | "linked_orcamento_id"
+  | "linked_orcamento_identificador"
+  | "needs_detail"
+  | "nome"
+  | "observacao"
+  | "origem"
+  | "possui_flexibilidade"
+  | "raw_json"
+  | "raw_summary_json"
+  | "source_hash"
+  | "source_updated_at"
+  | "synced_at"
+  | "telefone"
+  | "updated_at"
+> {
+  const rawSummaryJson = JSON.stringify(summary);
+  const sourceUpdatedAt =
+    readString(summary.updated_at) ??
+    readString(summary.data_solicitacao);
+
+  return {
+    adultos:
+      readString(summary.adultos) ??
+      readString(summary.passageiro_adulto),
+    criancas:
+      readString(summary.criancas) ??
+      readString(summary.passageiro_crianca),
+    data_ida: readString(summary.data_ida),
+    data_solicitacao: readString(summary.data_solicitacao),
+    data_volta: readString(summary.data_volta),
+    destino: readString(summary.destino),
+    email: readString(summary.email),
+    id: requireString(readId(summary), "solicitacao.id"),
+    last_seen_at: syncedAt,
+    linked_orcamento_id: null,
+    linked_orcamento_identificador: null,
+    needs_detail: 0,
+    nome: readString(summary.nome),
+    observacao: readString(summary.observacao),
+    origem: readString(summary.origem),
+    possui_flexibilidade:
+      readString(summary.possui_flexibilidade) ??
+      readString(summary.flexibilidade),
+    raw_summary_json: rawSummaryJson,
+    raw_json: rawSummaryJson,
+    source_hash: hashPayload(rawSummaryJson),
+    source_updated_at: sourceUpdatedAt,
+    synced_at: syncedAt,
+    telefone: readString(summary.telefone),
+    updated_at: sourceUpdatedAt ?? syncedAt,
   };
 }
 
@@ -258,6 +416,10 @@ function extractPassengerPersonIds(detail: IddasObject) {
   }
 
   return [];
+}
+
+function hashPayload(payload: string) {
+  return createHash("sha1").update(payload).digest("hex");
 }
 
 function extractPassengerCount(detail: IddasObject) {

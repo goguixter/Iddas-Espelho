@@ -33,7 +33,13 @@ function runMigrations() {
       situacao_cor TEXT,
       passageiro_ids_json TEXT NOT NULL DEFAULT '[]',
       passageiro_count INTEGER NOT NULL DEFAULT 0,
+      raw_summary_json TEXT NOT NULL DEFAULT '{}',
       raw_json TEXT NOT NULL,
+      source_updated_at TEXT,
+      source_hash TEXT,
+      last_seen_at TEXT,
+      detail_synced_at TEXT,
+      needs_detail INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL,
       synced_at TEXT NOT NULL
     );
@@ -96,7 +102,13 @@ function runMigrations() {
       data_solicitacao TEXT,
       linked_orcamento_id TEXT,
       linked_orcamento_identificador TEXT,
+      raw_summary_json TEXT NOT NULL DEFAULT '{}',
       raw_json TEXT NOT NULL,
+      source_updated_at TEXT,
+      source_hash TEXT,
+      last_seen_at TEXT,
+      detail_synced_at TEXT,
+      needs_detail INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL,
       synced_at TEXT NOT NULL
     );
@@ -132,6 +144,24 @@ function runMigrations() {
       running_started_at TEXT,
       error TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS sync_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope TEXT NOT NULL,
+      task_type TEXT NOT NULL,
+      task_key TEXT NOT NULL UNIQUE,
+      entity_id TEXT NOT NULL,
+      parent_id TEXT,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sync_tasks_scope_status_type
+      ON sync_tasks (scope, status, task_type);
   `);
 
   ensureColumn("sync_state", "status", "TEXT NOT NULL DEFAULT 'idle'");
@@ -154,9 +184,23 @@ function runMigrations() {
   ensureColumn("orcamentos", "situacao_codigo", "TEXT");
   ensureColumn("orcamentos", "situacao_nome", "TEXT");
   ensureColumn("orcamentos", "situacao_cor", "TEXT");
+  ensureColumn("orcamentos", "raw_summary_json", "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn("orcamentos", "source_updated_at", "TEXT");
+  ensureColumn("orcamentos", "source_hash", "TEXT");
+  ensureColumn("orcamentos", "last_seen_at", "TEXT");
+  ensureColumn("orcamentos", "detail_synced_at", "TEXT");
+  ensureColumn("orcamentos", "needs_detail", "INTEGER NOT NULL DEFAULT 0");
   ensureIndex(
     "idx_orcamentos_situacao_codigo",
     "CREATE INDEX IF NOT EXISTS idx_orcamentos_situacao_codigo ON orcamentos (situacao_codigo)",
+  );
+  ensureIndex(
+    "idx_orcamentos_needs_detail",
+    "CREATE INDEX IF NOT EXISTS idx_orcamentos_needs_detail ON orcamentos (needs_detail, last_seen_at)",
+  );
+  ensureIndex(
+    "idx_orcamentos_source_hash",
+    "CREATE INDEX IF NOT EXISTS idx_orcamentos_source_hash ON orcamentos (source_hash)",
   );
   ensureIndex(
     "idx_situacoes_codigo",
@@ -164,6 +208,12 @@ function runMigrations() {
   );
   ensureColumn("solicitacoes", "linked_orcamento_id", "TEXT");
   ensureColumn("solicitacoes", "linked_orcamento_identificador", "TEXT");
+  ensureColumn("solicitacoes", "raw_summary_json", "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn("solicitacoes", "source_updated_at", "TEXT");
+  ensureColumn("solicitacoes", "source_hash", "TEXT");
+  ensureColumn("solicitacoes", "last_seen_at", "TEXT");
+  ensureColumn("solicitacoes", "detail_synced_at", "TEXT");
+  ensureColumn("solicitacoes", "needs_detail", "INTEGER NOT NULL DEFAULT 0");
   ensureIndex(
     "idx_solicitacoes_linked_orcamento_id",
     "CREATE INDEX IF NOT EXISTS idx_solicitacoes_linked_orcamento_id ON solicitacoes (linked_orcamento_id)",
@@ -171,6 +221,18 @@ function runMigrations() {
   ensureIndex(
     "idx_solicitacoes_linked_orcamento_identificador",
     "CREATE INDEX IF NOT EXISTS idx_solicitacoes_linked_orcamento_identificador ON solicitacoes (linked_orcamento_identificador)",
+  );
+  ensureIndex(
+    "idx_solicitacoes_needs_detail",
+    "CREATE INDEX IF NOT EXISTS idx_solicitacoes_needs_detail ON solicitacoes (needs_detail, last_seen_at)",
+  );
+  ensureIndex(
+    "idx_solicitacoes_source_hash",
+    "CREATE INDEX IF NOT EXISTS idx_solicitacoes_source_hash ON solicitacoes (source_hash)",
+  );
+  ensureIndex(
+    "idx_sync_tasks_scope_status_type",
+    "CREATE INDEX IF NOT EXISTS idx_sync_tasks_scope_status_type ON sync_tasks (scope, status, task_type)",
   );
 
   for (const scope of ["global", "orcamentos", "solicitacoes"]) {

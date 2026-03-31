@@ -1,10 +1,7 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { readId } from "@/lib/iddas/accessors";
-import {
-  fetchIddasDetail,
-  fetchIddasList,
-} from "@/lib/iddas/client";
+import { fetchIddasDetail, fetchIddasList } from "@/lib/iddas/client";
 import {
   getIddasCotacaoRange,
   normalizeCotacaoRange,
@@ -12,19 +9,18 @@ import {
 import {
   extractPersonIdsFromOrcamento,
   normalizeOrcamento,
+  normalizeOrcamentoSummary,
   normalizePessoa,
   normalizeSolicitacao,
+  normalizeSolicitacaoSummary,
   normalizeSituacao,
   normalizeVenda,
 } from "@/lib/iddas/normalizers";
 import { logSync } from "@/lib/sync/logger";
-import {
-  getSyncStateRecord,
-  updateSyncStateRecord,
-} from "@/lib/sync/store";
+import { getSyncStateRecord, updateSyncStateRecord } from "@/lib/sync/store";
 import type { SyncScope } from "@/lib/sync/types";
 
-const upsertOrcamento = db.prepare(`
+const upsertOrcamentoSummary = db.prepare(`
   INSERT INTO orcamentos (
     id,
     identificador,
@@ -34,7 +30,71 @@ const upsertOrcamento = db.prepare(`
     situacao_cor,
     passageiro_ids_json,
     passageiro_count,
+    raw_summary_json,
     raw_json,
+    source_updated_at,
+    source_hash,
+    last_seen_at,
+    detail_synced_at,
+    needs_detail,
+    updated_at,
+    synced_at
+  )
+  VALUES (
+    @id,
+    @identificador,
+    @cliente_pessoa_id,
+    @situacao_codigo,
+    @situacao_nome,
+    @situacao_cor,
+    '[]',
+    0,
+    @raw_summary_json,
+    @raw_json,
+    @source_updated_at,
+    @source_hash,
+    @last_seen_at,
+    NULL,
+    @needs_detail,
+    @updated_at,
+    @synced_at
+  )
+  ON CONFLICT(id) DO UPDATE SET
+    identificador = COALESCE(excluded.identificador, orcamentos.identificador),
+    cliente_pessoa_id = COALESCE(excluded.cliente_pessoa_id, orcamentos.cliente_pessoa_id),
+    situacao_codigo = COALESCE(excluded.situacao_codigo, orcamentos.situacao_codigo),
+    situacao_nome = COALESCE(excluded.situacao_nome, orcamentos.situacao_nome),
+    situacao_cor = COALESCE(excluded.situacao_cor, orcamentos.situacao_cor),
+    raw_summary_json = excluded.raw_summary_json,
+    raw_json = CASE
+      WHEN orcamentos.detail_synced_at IS NULL THEN excluded.raw_json
+      ELSE orcamentos.raw_json
+    END,
+    source_updated_at = excluded.source_updated_at,
+    source_hash = excluded.source_hash,
+    last_seen_at = excluded.last_seen_at,
+    needs_detail = excluded.needs_detail,
+    updated_at = excluded.updated_at,
+    synced_at = excluded.synced_at
+`);
+
+const upsertOrcamentoDetail = db.prepare(`
+  INSERT INTO orcamentos (
+    id,
+    identificador,
+    cliente_pessoa_id,
+    situacao_codigo,
+    situacao_nome,
+    situacao_cor,
+    passageiro_ids_json,
+    passageiro_count,
+    raw_summary_json,
+    raw_json,
+    source_updated_at,
+    source_hash,
+    last_seen_at,
+    detail_synced_at,
+    needs_detail,
     updated_at,
     synced_at
   )
@@ -47,7 +107,13 @@ const upsertOrcamento = db.prepare(`
     @situacao_cor,
     @passageiro_ids_json,
     @passageiro_count,
+    @raw_summary_json,
     @raw_json,
+    @source_updated_at,
+    @source_hash,
+    @last_seen_at,
+    @detail_synced_at,
+    0,
     @updated_at,
     @synced_at
   )
@@ -59,7 +125,16 @@ const upsertOrcamento = db.prepare(`
     situacao_cor = excluded.situacao_cor,
     passageiro_ids_json = excluded.passageiro_ids_json,
     passageiro_count = excluded.passageiro_count,
+    raw_summary_json = CASE
+      WHEN orcamentos.raw_summary_json = '{}' THEN excluded.raw_summary_json
+      ELSE orcamentos.raw_summary_json
+    END,
     raw_json = excluded.raw_json,
+    source_updated_at = COALESCE(orcamentos.source_updated_at, excluded.source_updated_at),
+    source_hash = COALESCE(orcamentos.source_hash, excluded.source_hash),
+    last_seen_at = COALESCE(orcamentos.last_seen_at, excluded.last_seen_at),
+    detail_synced_at = excluded.detail_synced_at,
+    needs_detail = 0,
     updated_at = excluded.updated_at,
     synced_at = excluded.synced_at
 `);
@@ -157,7 +232,7 @@ const upsertSituacao = db.prepare(`
     synced_at = excluded.synced_at
 `);
 
-const upsertSolicitacao = db.prepare(`
+const upsertSolicitacaoSummary = db.prepare(`
   INSERT INTO solicitacoes (
     id,
     nome,
@@ -174,7 +249,13 @@ const upsertSolicitacao = db.prepare(`
     data_solicitacao,
     linked_orcamento_id,
     linked_orcamento_identificador,
+    raw_summary_json,
     raw_json,
+    source_updated_at,
+    source_hash,
+    last_seen_at,
+    detail_synced_at,
+    needs_detail,
     updated_at,
     synced_at
   )
@@ -194,7 +275,92 @@ const upsertSolicitacao = db.prepare(`
     @data_solicitacao,
     @linked_orcamento_id,
     @linked_orcamento_identificador,
+    @raw_summary_json,
     @raw_json,
+    @source_updated_at,
+    @source_hash,
+    @last_seen_at,
+    NULL,
+    @needs_detail,
+    @updated_at,
+    @synced_at
+  )
+  ON CONFLICT(id) DO UPDATE SET
+    nome = COALESCE(excluded.nome, solicitacoes.nome),
+    email = COALESCE(excluded.email, solicitacoes.email),
+    telefone = COALESCE(excluded.telefone, solicitacoes.telefone),
+    origem = COALESCE(excluded.origem, solicitacoes.origem),
+    destino = COALESCE(excluded.destino, solicitacoes.destino),
+    data_ida = COALESCE(excluded.data_ida, solicitacoes.data_ida),
+    data_volta = COALESCE(excluded.data_volta, solicitacoes.data_volta),
+    adultos = COALESCE(excluded.adultos, solicitacoes.adultos),
+    criancas = COALESCE(excluded.criancas, solicitacoes.criancas),
+    possui_flexibilidade = COALESCE(excluded.possui_flexibilidade, solicitacoes.possui_flexibilidade),
+    observacao = COALESCE(excluded.observacao, solicitacoes.observacao),
+    data_solicitacao = COALESCE(excluded.data_solicitacao, solicitacoes.data_solicitacao),
+    raw_summary_json = excluded.raw_summary_json,
+    raw_json = CASE
+      WHEN solicitacoes.detail_synced_at IS NULL THEN excluded.raw_json
+      ELSE solicitacoes.raw_json
+    END,
+    source_updated_at = excluded.source_updated_at,
+    source_hash = excluded.source_hash,
+    last_seen_at = excluded.last_seen_at,
+    needs_detail = excluded.needs_detail,
+    updated_at = excluded.updated_at,
+    synced_at = excluded.synced_at
+`);
+
+const upsertSolicitacaoDetail = db.prepare(`
+  INSERT INTO solicitacoes (
+    id,
+    nome,
+    email,
+    telefone,
+    origem,
+    destino,
+    data_ida,
+    data_volta,
+    adultos,
+    criancas,
+    possui_flexibilidade,
+    observacao,
+    data_solicitacao,
+    linked_orcamento_id,
+    linked_orcamento_identificador,
+    raw_summary_json,
+    raw_json,
+    source_updated_at,
+    source_hash,
+    last_seen_at,
+    detail_synced_at,
+    needs_detail,
+    updated_at,
+    synced_at
+  )
+  VALUES (
+    @id,
+    @nome,
+    @email,
+    @telefone,
+    @origem,
+    @destino,
+    @data_ida,
+    @data_volta,
+    @adultos,
+    @criancas,
+    @possui_flexibilidade,
+    @observacao,
+    @data_solicitacao,
+    @linked_orcamento_id,
+    @linked_orcamento_identificador,
+    @raw_summary_json,
+    @raw_json,
+    @source_updated_at,
+    @source_hash,
+    @last_seen_at,
+    @detail_synced_at,
+    0,
     @updated_at,
     @synced_at
   )
@@ -213,15 +379,106 @@ const upsertSolicitacao = db.prepare(`
     data_solicitacao = excluded.data_solicitacao,
     linked_orcamento_id = COALESCE(solicitacoes.linked_orcamento_id, excluded.linked_orcamento_id),
     linked_orcamento_identificador = COALESCE(solicitacoes.linked_orcamento_identificador, excluded.linked_orcamento_identificador),
+    raw_summary_json = CASE
+      WHEN solicitacoes.raw_summary_json = '{}' THEN excluded.raw_summary_json
+      ELSE solicitacoes.raw_summary_json
+    END,
     raw_json = excluded.raw_json,
+    source_updated_at = COALESCE(solicitacoes.source_updated_at, excluded.source_updated_at),
+    source_hash = COALESCE(solicitacoes.source_hash, excluded.source_hash),
+    last_seen_at = COALESCE(solicitacoes.last_seen_at, excluded.last_seen_at),
+    detail_synced_at = excluded.detail_synced_at,
+    needs_detail = 0,
     updated_at = excluded.updated_at,
     synced_at = excluded.synced_at
 `);
 
-const hasOrcamento = db.prepare(`SELECT 1 FROM orcamentos WHERE id = ? LIMIT 1`);
 const hasPessoa = db.prepare(`SELECT 1 FROM pessoas WHERE id = ? LIMIT 1`);
 const hasVenda = db.prepare(`SELECT 1 FROM vendas WHERE id = ? LIMIT 1`);
-const hasSolicitacao = db.prepare(`SELECT 1 FROM solicitacoes WHERE id = ? LIMIT 1`);
+
+const getOrcamentoMirrorState = db.prepare(`
+  SELECT id, source_hash, source_updated_at, detail_synced_at
+  FROM orcamentos
+  WHERE id = ?
+`);
+
+const getSolicitacaoMirrorState = db.prepare(`
+  SELECT id, source_hash, source_updated_at, detail_synced_at
+  FROM solicitacoes
+  WHERE id = ?
+`);
+
+const listPendingOrcamentoIds = db.prepare(`
+  SELECT id
+  FROM orcamentos
+  WHERE needs_detail = 1
+  ORDER BY COALESCE(last_seen_at, synced_at) DESC, id ASC
+`);
+
+const listPendingSolicitacaoIds = db.prepare(`
+  SELECT id
+  FROM solicitacoes
+  WHERE needs_detail = 1
+  ORDER BY COALESCE(last_seen_at, synced_at) DESC, id ASC
+`);
+
+const enqueueSyncTask = db.prepare(`
+  INSERT INTO sync_tasks (
+    scope,
+    task_type,
+    task_key,
+    entity_id,
+    parent_id,
+    payload_json,
+    status,
+    attempts,
+    last_error,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    @scope,
+    @task_type,
+    @task_key,
+    @entity_id,
+    @parent_id,
+    @payload_json,
+    'pending',
+    0,
+    NULL,
+    @created_at,
+    @updated_at
+  )
+  ON CONFLICT(task_key) DO UPDATE SET
+    entity_id = excluded.entity_id,
+    parent_id = excluded.parent_id,
+    payload_json = excluded.payload_json,
+    status = 'pending',
+    last_error = NULL,
+    updated_at = excluded.updated_at
+`);
+
+const listPendingSyncTasksByType = db.prepare(`
+  SELECT id, task_type, task_key, entity_id, parent_id, payload_json, attempts
+  FROM sync_tasks
+  WHERE scope = ? AND status = 'pending' AND task_type = ?
+  ORDER BY id ASC
+`);
+
+const markSyncTaskFailed = db.prepare(`
+  UPDATE sync_tasks
+  SET
+    status = 'failed',
+    attempts = attempts + 1,
+    last_error = ?,
+    updated_at = ?
+  WHERE id = ?
+`);
+
+const deleteSyncTask = db.prepare(`
+  DELETE FROM sync_tasks
+  WHERE id = ?
+`);
 
 type SyncResult = {
   last_synced_at: string;
@@ -229,6 +486,25 @@ type SyncResult = {
   orcamentos_synced: number;
   people_synced: number;
   vendas_synced: number;
+};
+
+type MirrorStateRow = {
+  detail_synced_at: string | null;
+  id: string;
+  source_hash: string | null;
+  source_updated_at: string | null;
+};
+
+type SyncTaskType = "pessoa" | "venda_orcamento";
+
+type SyncTaskRow = {
+  attempts: number;
+  entity_id: string;
+  id: number;
+  parent_id: string | null;
+  payload_json: string;
+  task_key: string;
+  task_type: SyncTaskType;
 };
 
 let activeOrcamentosSync: Promise<SyncResult> | null = null;
@@ -241,9 +517,7 @@ export async function syncIddasScope(
     periodo_cotacao_inicio?: string;
   },
 ) {
-  return scope === "solicitacoes"
-    ? syncSolicitacoesMirror()
-    : syncIddasMirror(input);
+  return scope === "solicitacoes" ? syncSolicitacoesMirror() : syncIddasMirror(input);
 }
 
 export async function syncIddasMirror(input?: {
@@ -291,14 +565,15 @@ async function runOrcamentosSync(input?: {
   const cotacaoRange =
     normalizeCotacaoRange(input ?? {}) ??
     getIddasCotacaoRange(env.IDDAS_SYNC_LOOKBACK_DAYS);
+  const now = new Date().toISOString();
+  const fetchedPersonIds = new Set<string>();
   let orcamentosCreated = 0;
-  let orcamentosSynced = 0;
+  let orcamentosCollected = 0;
   let peopleCreated = 0;
   let peopleSynced = 0;
   let vendasCreated = 0;
   let vendasSynced = 0;
-  const now = new Date().toISOString();
-  const fetchedPersonIds = new Set<string>();
+  let queuedOrcamentos = 0;
 
   try {
     logSync("info", "sync.started", {
@@ -311,43 +586,10 @@ async function runOrcamentosSync(input?: {
       started_at: now,
     });
 
-    updateSyncStateRecord(scope, {
-      cancel_requested: 0,
-      current_item_id: null,
-      current_page: 1,
-      current_stage: "Buscando páginas de orçamentos",
-      error: null,
-      items_created: 0,
-      items_synced: 0,
-      last_synced_at: null,
-      next_page: startOrcamentoPage,
-      next_orcamento_page: startOrcamentoPage,
-      orcamentos_created: 0,
-      orcamentos_synced: 0,
-      people_created: 0,
-      people_synced: 0,
-      related_created: 0,
-      related_synced: 0,
-      running_started_at: now,
-      secondary_created: 0,
-      secondary_synced: 0,
-      status: "running",
-      vendas_created: 0,
-      vendas_synced: 0,
-    });
-
-    updateSyncStateRecord(scope, {
-      current_item_id: null,
-      current_page: 1,
-      current_stage: "Sincronizando situações",
-    });
+    resetScopeState(scope, now, startOrcamentoPage, "Sincronizando situações");
 
     const situacoes = await fetchIddasList("situacao", 1, 100);
-    logSync("info", "sync.situacoes.page", {
-      page: 1,
-      returned: situacoes.length,
-    });
-
+    logSync("info", "sync.situacoes.page", { page: 1, returned: situacoes.length });
     for (const situacao of situacoes) {
       upsertSituacao.run(normalizeSituacao(situacao, now));
     }
@@ -362,7 +604,7 @@ async function runOrcamentosSync(input?: {
       updateSyncStateRecord(scope, {
         current_item_id: null,
         current_page: orcamentoPage,
-        current_stage: "Buscando página de orçamentos",
+        current_stage: "Coletando orçamentos da página",
         next_page: orcamentoPage,
         next_orcamento_page: orcamentoPage,
       });
@@ -398,164 +640,39 @@ async function runOrcamentosSync(input?: {
           continue;
         }
 
-        updateSyncStateRecord(scope, {
-          current_item_id: orcamentoId,
-          current_stage: "Processando orçamento",
+        const normalized = normalizeOrcamentoSummary(summary, now);
+        const existing = getMirrorState(getOrcamentoMirrorState, orcamentoId);
+        const isNew = !existing;
+        const needsDetail = shouldRefreshDetail(existing, normalized.source_hash, normalized.source_updated_at);
+
+        upsertOrcamentoSummary.run({
+          ...normalized,
+          needs_detail: needsDetail ? 1 : 0,
         });
 
-        const detail = await fetchIddasDetail("orcamento", orcamentoId);
-        const orcamento = normalizeOrcamento(detail, now);
-        const orcamentoAlreadyExists = hasRow(hasOrcamento, orcamento.id);
-        logSync("info", "sync.orcamento.processed", {
-          cliente_pessoa_id: orcamento.cliente_pessoa_id,
-          id: orcamento.id,
-          identificador: orcamento.identificador,
-          new_record: orcamentoAlreadyExists ? 0 : 1,
-          passageiros: orcamento.passageiro_count,
-        });
-        if (!orcamentoAlreadyExists) {
+        if (isNew) {
           orcamentosCreated += 1;
         }
-        upsertOrcamento.run(orcamento);
-        orcamentosSynced += 1;
+        if (needsDetail) {
+          queuedOrcamentos += 1;
+        }
 
-        updateSyncStateRecord(scope, {
-          items_created: orcamentosCreated,
-          items_synced: orcamentosSynced,
-          orcamentos_created: orcamentosCreated,
-          orcamentos_synced: orcamentosSynced,
+        orcamentosCollected += 1;
+
+        logSync("info", "sync.orcamento.collected", {
+          id: normalized.id,
+          identificador: normalized.identificador,
+          new_record: isNew ? 1 : 0,
+          needs_detail: needsDetail ? 1 : 0,
         });
-
-        for (const personId of extractPersonIdsFromOrcamento(orcamento)) {
-          throwIfCancelRequested(scope);
-
-          if (fetchedPersonIds.has(personId)) {
-            continue;
-          }
-
-          updateSyncStateRecord(scope, {
-            current_item_id: personId,
-            current_stage: "Processando pessoa",
-          });
-
-          try {
-            const pessoa = await fetchIddasDetail("pessoa", personId);
-            const pessoaAlreadyExists = hasRow(hasPessoa, personId);
-            if (!pessoaAlreadyExists) {
-              peopleCreated += 1;
-            }
-            upsertPessoa.run(normalizePessoa(pessoa, now));
-            fetchedPersonIds.add(personId);
-            peopleSynced += 1;
-            logSync("info", "sync.pessoa.processed", {
-              id: personId,
-              new_record: pessoaAlreadyExists ? 0 : 1,
-            });
-            updateSyncStateRecord(scope, {
-              related_created: peopleCreated,
-              related_synced: peopleSynced,
-              people_created: peopleCreated,
-              people_synced: peopleSynced,
-            });
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : "Falha ao buscar pessoa.";
-
-            if (message.includes("IDDAS respondeu 404")) {
-              fetchedPersonIds.add(personId);
-              logSync("warn", "sync.pessoa.not-found", {
-                id: personId,
-              });
-              continue;
-            }
-
-            if (!message.includes("IDDAS respondeu 429")) {
-              logSync("error", "sync.pessoa.error", {
-                id: personId,
-                message,
-              });
-              throw error;
-            }
-
-            logSync("warn", "sync.pessoa.rate-limited", {
-              id: personId,
-            });
-          }
-        }
-
-        if (!orcamento.identificador) {
-          continue;
-        }
-
-        for (
-          let vendaPage = 1;
-          vendaPage <= env.IDDAS_SYNC_MAX_PAGES;
-          vendaPage += 1
-        ) {
-          throwIfCancelRequested(scope);
-
-          updateSyncStateRecord(scope, {
-            current_item_id: orcamento.id,
-            current_page: vendaPage,
-            current_stage: `Buscando vendas do orçamento ${orcamento.identificador}`,
-          });
-
-          const vendas = await fetchIddasList(
-            "venda",
-            vendaPage,
-            env.IDDAS_SYNC_VENDAS_PER_PAGE,
-            {
-              orcamento: orcamento.identificador,
-            },
-          );
-
-          logSync("info", "sync.vendas.page", {
-            orcamento_id: orcamento.id,
-            orcamento_identificador: orcamento.identificador,
-            page: vendaPage,
-            returned: vendas.length,
-          });
-
-          if (vendas.length === 0) {
-            break;
-          }
-
-          for (const venda of vendas) {
-            throwIfCancelRequested(scope);
-
-            const normalized = normalizeVenda(
-              venda,
-              orcamento.id,
-              orcamento.identificador,
-              now,
-            );
-            const vendaAlreadyExists = hasRow(hasVenda, normalized.id);
-            if (!vendaAlreadyExists) {
-              vendasCreated += 1;
-            }
-            upsertVenda.run(normalized);
-            vendasSynced += 1;
-            logSync("info", "sync.venda.processed", {
-              id: normalized.id,
-              new_record: vendaAlreadyExists ? 0 : 1,
-              orcamento_id: normalized.orcamento_id,
-              orcamento_identificador: normalized.orcamento_identificador,
-            });
-            updateSyncStateRecord(scope, {
-              current_item_id: normalized.id,
-              current_stage: "Processando venda",
-              secondary_created: vendasCreated,
-              secondary_synced: vendasSynced,
-              vendas_created: vendasCreated,
-              vendas_synced: vendasSynced,
-            });
-          }
-
-          if (vendas.length < env.IDDAS_SYNC_VENDAS_PER_PAGE) {
-            break;
-          }
-        }
       }
+
+      updateSyncStateRecord(scope, {
+        items_created: orcamentosCreated,
+        items_synced: orcamentosCollected,
+        orcamentos_created: orcamentosCreated,
+        orcamentos_synced: orcamentosCollected,
+      });
 
       if (summaries.length < env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE) {
         updateSyncStateRecord(scope, {
@@ -571,35 +688,198 @@ async function runOrcamentosSync(input?: {
       });
     }
 
-    updateSyncStateRecord(scope, {
-      cancel_requested: 0,
-      current_item_id: null,
-      current_page: null,
-      current_stage: "Concluído",
+    const pendingOrcamentoIds = readPendingIds(listPendingOrcamentoIds);
+    logSync("info", "sync.orcamentos.pending-detail", {
+      pending: pendingOrcamentoIds.length,
+      queued_in_collection: queuedOrcamentos,
+    });
+
+    for (const orcamentoId of pendingOrcamentoIds) {
+      throwIfCancelRequested(scope);
+
+      updateSyncStateRecord(scope, {
+        current_item_id: orcamentoId,
+        current_stage: "Detalhando orçamento pendente",
+      });
+
+      const detail = await fetchIddasDetail("orcamento", orcamentoId);
+      const normalized = normalizeOrcamento(detail, now);
+      upsertOrcamentoDetail.run(normalized);
+
+      logSync("info", "sync.orcamento.detailed", {
+        cliente_pessoa_id: normalized.cliente_pessoa_id,
+        id: normalized.id,
+        identificador: normalized.identificador,
+        passageiros: normalized.passageiro_count,
+      });
+
+      for (const personId of extractPersonIdsFromOrcamento(normalized)) {
+        enqueueDerivedTask(scope, "pessoa", personId, normalized.id, { personId });
+      }
+
+      if (normalized.identificador) {
+        enqueueDerivedTask(scope, "venda_orcamento", normalized.id, normalized.id, {
+          identificador: normalized.identificador,
+          orcamentoId: normalized.id,
+        });
+      }
+    }
+
+    const pendingPessoaTasks = readPendingTasks(scope, "pessoa");
+    logSync("info", "sync.pessoas.pending-tasks", {
+      pending: pendingPessoaTasks.length,
+    });
+
+    for (const task of pendingPessoaTasks) {
+      throwIfCancelRequested(scope);
+
+      const personId = task.entity_id;
+      if (fetchedPersonIds.has(personId)) {
+        deleteSyncTask.run(task.id);
+        continue;
+      }
+
+      updateSyncStateRecord(scope, {
+        current_item_id: personId,
+        current_stage: "Atualizando pessoas pendentes",
+      });
+
+      try {
+        const pessoa = await fetchIddasDetail("pessoa", personId);
+        const pessoaAlreadyExists = hasRow(hasPessoa, personId);
+        if (!pessoaAlreadyExists) {
+          peopleCreated += 1;
+        }
+        upsertPessoa.run(normalizePessoa(pessoa, now));
+        fetchedPersonIds.add(personId);
+        peopleSynced += 1;
+        deleteSyncTask.run(task.id);
+
+        logSync("info", "sync.pessoa.processed", {
+          id: personId,
+          new_record: pessoaAlreadyExists ? 0 : 1,
+        });
+
+        updateSyncStateRecord(scope, {
+          people_created: peopleCreated,
+          people_synced: peopleSynced,
+          related_created: peopleCreated,
+          related_synced: peopleSynced,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Falha ao buscar pessoa.";
+
+        if (message.includes("IDDAS respondeu 404")) {
+          fetchedPersonIds.add(personId);
+          deleteSyncTask.run(task.id);
+          logSync("warn", "sync.pessoa.not-found", { id: personId });
+          continue;
+        }
+
+        if (message.includes("IDDAS respondeu 429")) {
+          logSync("warn", "sync.pessoa.rate-limited", { id: personId });
+          continue;
+        }
+
+        markSyncTaskFailed.run(message, now, task.id);
+        logSync("error", "sync.pessoa.error", { id: personId, message });
+        throw error;
+      }
+    }
+
+    const pendingVendaTasks = readPendingTasks(scope, "venda_orcamento");
+    logSync("info", "sync.vendas.pending-tasks", {
+      pending: pendingVendaTasks.length,
+    });
+
+    for (const task of pendingVendaTasks) {
+      throwIfCancelRequested(scope);
+
+      const payload = parseTaskPayload(task.payload_json);
+      const orcamentoId = payload.orcamentoId ?? task.entity_id;
+      const orcamentoIdentificador = payload.identificador;
+
+      if (!orcamentoIdentificador) {
+        deleteSyncTask.run(task.id);
+        continue;
+      }
+
+      for (let vendaPage = 1; vendaPage <= env.IDDAS_SYNC_MAX_PAGES; vendaPage += 1) {
+        throwIfCancelRequested(scope);
+
+        updateSyncStateRecord(scope, {
+          current_item_id: orcamentoId,
+          current_page: vendaPage,
+          current_stage: `Atualizando vendas pendentes de ${orcamentoIdentificador}`,
+        });
+
+        const vendas = await fetchIddasList("venda", vendaPage, env.IDDAS_SYNC_VENDAS_PER_PAGE, {
+          orcamento: orcamentoIdentificador,
+        });
+
+        logSync("info", "sync.vendas.page", {
+          orcamento_id: orcamentoId,
+          orcamento_identificador: orcamentoIdentificador,
+          page: vendaPage,
+          returned: vendas.length,
+        });
+
+        if (vendas.length === 0) {
+          break;
+        }
+
+        for (const venda of vendas) {
+          throwIfCancelRequested(scope);
+
+          const vendaNormalized = normalizeVenda(venda, orcamentoId, orcamentoIdentificador, now);
+          const vendaAlreadyExists = hasRow(hasVenda, vendaNormalized.id);
+          if (!vendaAlreadyExists) {
+            vendasCreated += 1;
+          }
+          upsertVenda.run(vendaNormalized);
+          vendasSynced += 1;
+
+          logSync("info", "sync.venda.processed", {
+            id: vendaNormalized.id,
+            new_record: vendaAlreadyExists ? 0 : 1,
+            orcamento_id: vendaNormalized.orcamento_id,
+            orcamento_identificador: vendaNormalized.orcamento_identificador,
+          });
+
+          updateSyncStateRecord(scope, {
+            current_item_id: vendaNormalized.id,
+            current_stage: "Atualizando vendas pendentes",
+            secondary_created: vendasCreated,
+            secondary_synced: vendasSynced,
+            vendas_created: vendasCreated,
+            vendas_synced: vendasSynced,
+          });
+        }
+
+        if (vendas.length < env.IDDAS_SYNC_VENDAS_PER_PAGE) {
+          break;
+        }
+      }
+
+      deleteSyncTask.run(task.id);
+    }
+
+    completeScopeState(scope, {
       error: null,
-      items_created: orcamentosCreated,
-      items_synced: orcamentosSynced,
-      last_synced_at: now,
-      next_page: getSyncStateRecord(scope).next_page,
-      next_orcamento_page: getSyncStateRecord(scope).next_orcamento_page,
-      orcamentos_created: orcamentosCreated,
-      orcamentos_synced: orcamentosSynced,
-      people_created: peopleCreated,
-      people_synced: peopleSynced,
-      related_created: peopleCreated,
-      related_synced: peopleSynced,
-      running_started_at: null,
-      secondary_created: vendasCreated,
-      secondary_synced: vendasSynced,
-      status: "completed",
-      vendas_created: vendasCreated,
-      vendas_synced: vendasSynced,
+      itemsCreated: orcamentosCreated,
+      itemsSynced: orcamentosCollected,
+      now,
+      peopleCreated,
+      peopleSynced,
+      vendasCreated,
+      vendasSynced,
     });
 
     logSync("info", "sync.completed", {
       last_synced_at: now,
+      orcamentos_collected: orcamentosCollected,
       orcamentos_created: orcamentosCreated,
-      orcamentos_synced: orcamentosSynced,
+      orcamentos_detailed: pendingOrcamentoIds.length,
       people_created: peopleCreated,
       people_synced: peopleSynced,
       vendas_created: vendasCreated,
@@ -607,53 +887,22 @@ async function runOrcamentosSync(input?: {
     });
 
     return {
-      ok: true as const,
+      ok: true,
       last_synced_at: now,
-      orcamentos_synced: orcamentosSynced,
+      orcamentos_synced: orcamentosCollected,
       people_synced: peopleSynced,
       vendas_synced: vendasSynced,
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Falha inesperada no sync.";
-
-    const cancelled = error instanceof Error && error.message === "SYNC_CANCELLED";
-
-    updateSyncStateRecord(scope, {
-      cancel_requested: 0,
-      current_item_id: null,
-      current_page: null,
-      current_stage: cancelled ? "Cancelado" : "Falha no sync",
-      error: cancelled ? null : message,
-      items_created: orcamentosCreated,
-      items_synced: orcamentosSynced,
-      next_page: getSyncStateRecord(scope).next_page,
-      next_orcamento_page: getSyncStateRecord(scope).next_orcamento_page,
-      orcamentos_created: orcamentosCreated,
-      orcamentos_synced: orcamentosSynced,
-      people_created: peopleCreated,
-      people_synced: peopleSynced,
-      related_created: peopleCreated,
-      related_synced: peopleSynced,
-      running_started_at: null,
-      secondary_created: vendasCreated,
-      secondary_synced: vendasSynced,
-      status: cancelled ? "cancelled" : "failed",
-      vendas_created: vendasCreated,
-      vendas_synced: vendasSynced,
+    finishScopeWithError(scope, {
+      error,
+      itemsCreated: orcamentosCreated,
+      itemsSynced: orcamentosCollected,
+      peopleCreated,
+      peopleSynced,
+      vendasCreated,
+      vendasSynced,
     });
-
-    logSync(cancelled ? "warn" : "error", "sync.finished-with-error", {
-      cancelled,
-      message,
-      orcamentos_created: orcamentosCreated,
-      orcamentos_synced: orcamentosSynced,
-      people_created: peopleCreated,
-      people_synced: peopleSynced,
-      vendas_created: vendasCreated,
-      vendas_synced: vendasSynced,
-    });
-
     throw error;
   }
 }
@@ -662,34 +911,23 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
   const scope: SyncScope = "solicitacoes";
   const now = new Date().toISOString();
   let itemsCreated = 0;
-  let itemsSynced = 0;
+  let itemsCollected = 0;
+  let queuedSolicitacoes = 0;
 
   try {
-    updateSyncStateRecord(scope, {
-      cancel_requested: 0,
-      current_item_id: null,
-      current_page: 1,
-      current_stage: "Buscando páginas de solicitações",
-      error: null,
-      items_created: 0,
-      items_synced: 0,
-      last_synced_at: null,
-      next_page: 1,
-      related_created: 0,
-      related_synced: 0,
-      running_started_at: now,
-      secondary_created: 0,
-      secondary_synced: 0,
-      status: "running",
-    });
+    resetScopeState(scope, now, 1, "Coletando solicitações");
 
-    for (let solicitacaoPage = 1; solicitacaoPage <= env.IDDAS_SYNC_MAX_PAGES; solicitacaoPage += 1) {
+    for (
+      let solicitacaoPage = 1;
+      solicitacaoPage <= env.IDDAS_SYNC_MAX_PAGES;
+      solicitacaoPage += 1
+    ) {
       throwIfCancelRequested(scope);
 
       updateSyncStateRecord(scope, {
         current_item_id: null,
         current_page: solicitacaoPage,
-        current_stage: "Buscando página de solicitações",
+        current_stage: "Coletando solicitações da página",
         next_page: solicitacaoPage,
       });
 
@@ -717,24 +955,35 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
           continue;
         }
 
-        updateSyncStateRecord(scope, {
-          current_item_id: solicitacaoId,
-          current_stage: "Processando solicitação",
+        const normalized = normalizeSolicitacaoSummary(summary, now);
+        const existing = getMirrorState(getSolicitacaoMirrorState, solicitacaoId);
+        const isNew = !existing;
+        const needsDetail = shouldRefreshDetail(existing, normalized.source_hash, normalized.source_updated_at);
+
+        upsertSolicitacaoSummary.run({
+          ...normalized,
+          needs_detail: needsDetail ? 1 : 0,
         });
 
-        const detail = await fetchIddasDetail("solicitacao", solicitacaoId);
-        const normalized = normalizeSolicitacao(detail, now);
-        const alreadyExists = hasRow(hasSolicitacao, normalized.id);
-        if (!alreadyExists) {
+        if (isNew) {
           itemsCreated += 1;
         }
-        upsertSolicitacao.run(normalized);
-        itemsSynced += 1;
-        updateSyncStateRecord(scope, {
-          items_created: itemsCreated,
-          items_synced: itemsSynced,
+        if (needsDetail) {
+          queuedSolicitacoes += 1;
+        }
+        itemsCollected += 1;
+
+        logSync("info", "sync.solicitacao.collected", {
+          id: normalized.id,
+          new_record: isNew ? 1 : 0,
+          needs_detail: needsDetail ? 1 : 0,
         });
       }
+
+      updateSyncStateRecord(scope, {
+        items_created: itemsCreated,
+        items_synced: itemsCollected,
+      });
 
       if (solicitacoes.length < env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE) {
         updateSyncStateRecord(scope, { next_page: 1 });
@@ -746,6 +995,28 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
       });
     }
 
+    const pendingSolicitacaoIds = readPendingIds(listPendingSolicitacaoIds);
+    logSync("info", "sync.solicitacoes.pending-detail", {
+      pending: pendingSolicitacaoIds.length,
+      queued_in_collection: queuedSolicitacoes,
+    });
+
+    for (const solicitacaoId of pendingSolicitacaoIds) {
+      throwIfCancelRequested(scope);
+
+      updateSyncStateRecord(scope, {
+        current_item_id: solicitacaoId,
+        current_stage: "Detalhando solicitação pendente",
+      });
+
+      const detail = await fetchIddasDetail("solicitacao", solicitacaoId);
+      upsertSolicitacaoDetail.run(normalizeSolicitacao(detail, now));
+
+      logSync("info", "sync.solicitacao.detailed", {
+        id: solicitacaoId,
+      });
+    }
+
     updateSyncStateRecord(scope, {
       cancel_requested: 0,
       current_item_id: null,
@@ -753,7 +1024,7 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
       current_stage: "Concluído",
       error: null,
       items_created: itemsCreated,
-      items_synced: itemsSynced,
+      items_synced: itemsCollected,
       last_synced_at: now,
       next_page: getSyncStateRecord(scope).next_page,
       running_started_at: null,
@@ -763,13 +1034,12 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
     return {
       ok: true,
       last_synced_at: now,
-      orcamentos_synced: itemsSynced,
+      orcamentos_synced: itemsCollected,
       people_synced: 0,
       vendas_synced: 0,
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Falha inesperada no sync.";
+    const message = error instanceof Error ? error.message : "Falha inesperada no sync.";
     const cancelled = error instanceof Error && error.message === "SYNC_CANCELLED";
 
     updateSyncStateRecord(scope, {
@@ -779,7 +1049,7 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
       current_stage: cancelled ? "Cancelado" : "Falha no sync",
       error: cancelled ? null : message,
       items_created: itemsCreated,
-      items_synced: itemsSynced,
+      items_synced: itemsCollected,
       next_page: getSyncStateRecord(scope).next_page,
       running_started_at: null,
       status: cancelled ? "cancelled" : "failed",
@@ -807,6 +1077,124 @@ export function isIddasSyncRunning(scope: SyncScope) {
       : Boolean(activeOrcamentosSync || activeSolicitacoesSync);
 }
 
+function resetScopeState(scope: SyncScope, now: string, nextPage: number, stage: string) {
+  updateSyncStateRecord(scope, {
+    cancel_requested: 0,
+    current_item_id: null,
+    current_page: nextPage,
+    current_stage: stage,
+    error: null,
+    items_created: 0,
+    items_synced: 0,
+    last_synced_at: null,
+    next_page: nextPage,
+    next_orcamento_page: nextPage,
+    orcamentos_created: 0,
+    orcamentos_synced: 0,
+    people_created: 0,
+    people_synced: 0,
+    related_created: 0,
+    related_synced: 0,
+    running_started_at: now,
+    secondary_created: 0,
+    secondary_synced: 0,
+    status: "running",
+    vendas_created: 0,
+    vendas_synced: 0,
+  });
+}
+
+function completeScopeState(
+  scope: SyncScope,
+  input: {
+    error: string | null;
+    itemsCreated: number;
+    itemsSynced: number;
+    now: string;
+    peopleCreated: number;
+    peopleSynced: number;
+    vendasCreated: number;
+    vendasSynced: number;
+  },
+) {
+  updateSyncStateRecord(scope, {
+    cancel_requested: 0,
+    current_item_id: null,
+    current_page: null,
+    current_stage: "Concluído",
+    error: input.error,
+    items_created: input.itemsCreated,
+    items_synced: input.itemsSynced,
+    last_synced_at: input.now,
+    next_page: getSyncStateRecord(scope).next_page,
+    next_orcamento_page: getSyncStateRecord(scope).next_orcamento_page,
+    orcamentos_created: input.itemsCreated,
+    orcamentos_synced: input.itemsSynced,
+    people_created: input.peopleCreated,
+    people_synced: input.peopleSynced,
+    related_created: input.peopleCreated,
+    related_synced: input.peopleSynced,
+    running_started_at: null,
+    secondary_created: input.vendasCreated,
+    secondary_synced: input.vendasSynced,
+    status: "completed",
+    vendas_created: input.vendasCreated,
+    vendas_synced: input.vendasSynced,
+  });
+}
+
+function finishScopeWithError(
+  scope: SyncScope,
+  input: {
+    error: unknown;
+    itemsCreated: number;
+    itemsSynced: number;
+    peopleCreated: number;
+    peopleSynced: number;
+    vendasCreated: number;
+    vendasSynced: number;
+  },
+) {
+  const message =
+    input.error instanceof Error ? input.error.message : "Falha inesperada no sync.";
+  const cancelled = input.error instanceof Error && input.error.message === "SYNC_CANCELLED";
+
+  updateSyncStateRecord(scope, {
+    cancel_requested: 0,
+    current_item_id: null,
+    current_page: null,
+    current_stage: cancelled ? "Cancelado" : "Falha no sync",
+    error: cancelled ? null : message,
+    items_created: input.itemsCreated,
+    items_synced: input.itemsSynced,
+    next_page: getSyncStateRecord(scope).next_page,
+    next_orcamento_page: getSyncStateRecord(scope).next_orcamento_page,
+    orcamentos_created: input.itemsCreated,
+    orcamentos_synced: input.itemsSynced,
+    people_created: input.peopleCreated,
+    people_synced: input.peopleSynced,
+    related_created: input.peopleCreated,
+    related_synced: input.peopleSynced,
+    running_started_at: null,
+    secondary_created: input.vendasCreated,
+    secondary_synced: input.vendasSynced,
+    status: cancelled ? "cancelled" : "failed",
+    vendas_created: input.vendasCreated,
+    vendas_synced: input.vendasSynced,
+  });
+
+  logSync(cancelled ? "warn" : "error", "sync.finished-with-error", {
+    cancelled,
+    message,
+    orcamentos_created: input.itemsCreated,
+    orcamentos_synced: input.itemsSynced,
+    people_created: input.peopleCreated,
+    people_synced: input.peopleSynced,
+    vendas_created: input.vendasCreated,
+    vendas_synced: input.vendasSynced,
+  });
+}
+
 function throwIfCancelRequested(scope: SyncScope) {
   const state = getSyncStateRecord(scope);
   if (state.cancel_requested) {
@@ -814,6 +1202,69 @@ function throwIfCancelRequested(scope: SyncScope) {
   }
 }
 
-function hasRow(statement: typeof hasOrcamento, id: string) {
+function hasRow(statement: { get(id: string): unknown }, id: string) {
   return Boolean(statement.get(id));
+}
+
+function getMirrorState(statement: { get(id: string): unknown }, id: string) {
+  return (statement.get(id) as MirrorStateRow | undefined) ?? null;
+}
+
+function shouldRefreshDetail(
+  existing: MirrorStateRow | null,
+  nextHash: string,
+  nextSourceUpdatedAt: string | null,
+) {
+  if (!existing) {
+    return true;
+  }
+
+  if (!existing.detail_synced_at) {
+    return true;
+  }
+
+  if (existing.source_hash !== nextHash) {
+    return true;
+  }
+
+  return (existing.source_updated_at ?? null) !== (nextSourceUpdatedAt ?? null);
+}
+
+function readPendingIds(statement: { all(): unknown[] }) {
+  return (statement.all() as Array<{ id: string }>).map((row) => row.id);
+}
+
+function enqueueDerivedTask(
+  scope: SyncScope,
+  taskType: SyncTaskType,
+  entityId: string,
+  parentId: string | null,
+  payload: Record<string, string>,
+) {
+  const now = new Date().toISOString();
+  const taskKey = taskType === "pessoa" ? `pessoa:${entityId}` : `venda_orcamento:${entityId}`;
+
+  enqueueSyncTask.run({
+    scope,
+    task_type: taskType,
+    task_key: taskKey,
+    entity_id: entityId,
+    parent_id: parentId,
+    payload_json: JSON.stringify(payload),
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+function readPendingTasks(scope: SyncScope, taskType: SyncTaskType) {
+  return listPendingSyncTasksByType.all(scope, taskType) as SyncTaskRow[];
+}
+
+function parseTaskPayload(payloadJson: string) {
+  try {
+    const parsed = JSON.parse(payloadJson) as Record<string, string>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
 }
