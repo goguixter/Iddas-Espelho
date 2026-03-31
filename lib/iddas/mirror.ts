@@ -480,6 +480,57 @@ const deleteSyncTask = db.prepare(`
   WHERE id = ?
 `);
 
+const reconcileSolicitacoesOrcamentoIdByIdentificador = db.prepare(`
+  UPDATE solicitacoes
+  SET linked_orcamento_id = (
+    SELECT o.id
+    FROM orcamentos o
+    WHERE o.identificador = solicitacoes.linked_orcamento_identificador
+    ORDER BY datetime(o.updated_at) DESC, o.id DESC
+    LIMIT 1
+  )
+  WHERE linked_orcamento_identificador IS NOT NULL
+    AND TRIM(linked_orcamento_identificador) <> ''
+    AND (
+      linked_orcamento_id IS NULL
+      OR linked_orcamento_id <> (
+        SELECT o.id
+        FROM orcamentos o
+        WHERE o.identificador = solicitacoes.linked_orcamento_identificador
+        ORDER BY datetime(o.updated_at) DESC, o.id DESC
+        LIMIT 1
+      )
+    )
+`);
+
+const reconcileSolicitacoesIdentificadorByOrcamentoId = db.prepare(`
+  UPDATE solicitacoes
+  SET linked_orcamento_identificador = (
+    SELECT o.identificador
+    FROM orcamentos o
+    WHERE o.id = solicitacoes.linked_orcamento_id
+    LIMIT 1
+  )
+  WHERE linked_orcamento_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM orcamentos o
+      WHERE o.id = solicitacoes.linked_orcamento_id
+        AND o.identificador IS NOT NULL
+        AND TRIM(o.identificador) <> ''
+    )
+    AND (
+      linked_orcamento_identificador IS NULL
+      OR TRIM(linked_orcamento_identificador) = ''
+      OR linked_orcamento_identificador <> (
+        SELECT o.identificador
+        FROM orcamentos o
+        WHERE o.id = solicitacoes.linked_orcamento_id
+        LIMIT 1
+      )
+    )
+`);
+
 type SyncResult = {
   last_synced_at: string;
   ok: true;
@@ -864,6 +915,19 @@ async function runOrcamentosSync(input?: {
       deleteSyncTask.run(task.id);
     }
 
+    updateSyncStateRecord(scope, {
+      current_item_id: null,
+      current_page: null,
+      current_stage: "Reconciliação local de vínculos",
+    });
+
+    const reconciliation = runLocalReconciliation();
+    logSync("info", "sync.reconciliation.completed", {
+      linked_by_id: reconciliation.linkedById,
+      linked_by_identificador: reconciliation.linkedByIdentificador,
+      scope,
+    });
+
     completeScopeState(scope, {
       error: null,
       itemsCreated: orcamentosCreated,
@@ -1016,6 +1080,19 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
         id: solicitacaoId,
       });
     }
+
+    updateSyncStateRecord(scope, {
+      current_item_id: null,
+      current_page: null,
+      current_stage: "Reconciliação local de vínculos",
+    });
+
+    const reconciliation = runLocalReconciliation();
+    logSync("info", "sync.reconciliation.completed", {
+      linked_by_id: reconciliation.linkedById,
+      linked_by_identificador: reconciliation.linkedByIdentificador,
+      scope,
+    });
 
     updateSyncStateRecord(scope, {
       cancel_requested: 0,
@@ -1267,4 +1344,15 @@ function parseTaskPayload(payloadJson: string) {
   } catch {
     return {};
   }
+}
+
+function runLocalReconciliation() {
+  const linkedById = reconcileSolicitacoesOrcamentoIdByIdentificador.run().changes;
+  const linkedByIdentificador =
+    reconcileSolicitacoesIdentificadorByOrcamentoId.run().changes;
+
+  return {
+    linkedById,
+    linkedByIdentificador,
+  };
 }

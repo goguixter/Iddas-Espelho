@@ -235,6 +235,79 @@ function runMigrations() {
     "CREATE INDEX IF NOT EXISTS idx_sync_tasks_scope_status_type ON sync_tasks (scope, status, task_type)",
   );
 
+  db.exec(`
+    CREATE VIEW IF NOT EXISTS orcamentos_read AS
+      SELECT
+        o.id,
+        o.identificador,
+        o.cliente_pessoa_id,
+        o.situacao_codigo,
+        COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
+        COALESCE(s.cor, o.situacao_cor) AS situacao_cor,
+        COALESCE(s.ordem, '') AS situacao_ordem,
+        o.passageiro_count,
+        o.raw_json,
+        o.updated_at,
+        p.nome AS cliente_nome_db,
+        (
+          SELECT sl.nome
+          FROM solicitacoes sl
+          WHERE sl.linked_orcamento_id = o.id
+          ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+          LIMIT 1
+        ) AS solicitacao_nome
+      FROM orcamentos o
+      LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+      LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo;
+
+    CREATE VIEW IF NOT EXISTS solicitacoes_read AS
+      SELECT
+        sl.id,
+        sl.nome,
+        sl.email,
+        sl.telefone,
+        sl.origem,
+        sl.destino,
+        sl.data_ida,
+        sl.data_volta,
+        sl.adultos,
+        sl.criancas,
+        sl.possui_flexibilidade,
+        sl.observacao,
+        sl.data_solicitacao,
+        sl.linked_orcamento_id,
+        COALESCE(sl.linked_orcamento_identificador, o.identificador) AS linked_orcamento_identificador,
+        sl.raw_json,
+        sl.updated_at,
+        COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
+        COALESCE(s.cor, o.situacao_cor) AS situacao_cor
+      FROM solicitacoes sl
+      LEFT JOIN orcamentos o ON o.id = sl.linked_orcamento_id
+      LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo;
+
+    CREATE VIEW IF NOT EXISTS vendas_read AS
+      SELECT
+        v.id,
+        v.orcamento_identificador,
+        v.status,
+        v.orcamento_id,
+        v.updated_at,
+        o.cliente_pessoa_id,
+        o.raw_json AS orcamento_raw_json,
+        p.nome AS cliente_nome_db,
+        (
+          SELECT sl.nome
+          FROM solicitacoes sl
+          WHERE sl.linked_orcamento_id = o.id
+          ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+          LIMIT 1
+        ) AS solicitacao_nome,
+        v.raw_json AS venda_raw_json
+      FROM vendas v
+      LEFT JOIN orcamentos o ON o.id = v.orcamento_id
+      LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id;
+  `);
+
   for (const scope of ["global", "orcamentos", "solicitacoes"]) {
     db.prepare(
       `

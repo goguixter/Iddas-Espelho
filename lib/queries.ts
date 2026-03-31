@@ -35,17 +35,16 @@ export async function getSyncState() {
 
 export async function getOrcamentosPage(page: number, perPage: number, query = "") {
   const where = buildLikeWhere(query, [
-    "o.id",
-    "o.identificador",
-    "o.cliente_pessoa_id",
-    "p.nome",
-    "o.raw_json",
+    "vw.id",
+    "vw.identificador",
+    "vw.cliente_pessoa_id",
+    "vw.cliente_nome_db",
+    "vw.raw_json",
   ]);
   const total = readFilteredCount(
     `
       SELECT COUNT(*)
-      FROM orcamentos o
-      LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+      FROM orcamentos_read vw
       ${where.clause}
     `,
     where.params,
@@ -54,28 +53,19 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
     .prepare(
       `
         SELECT
-          o.id,
-          o.identificador,
-          o.cliente_pessoa_id,
-          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
-          COALESCE(s.cor, o.situacao_cor) AS situacao_cor,
-          o.passageiro_count,
-          o.raw_json,
-          o.updated_at,
-          p.nome AS cliente_nome,
-          (
-            SELECT sl.nome
-            FROM solicitacoes sl
-            WHERE sl.linked_orcamento_id = o.id
-               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
-            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
-            LIMIT 1
-          ) AS solicitacao_nome
-        FROM orcamentos o
-        LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
-        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
+          vw.id,
+          vw.identificador,
+          vw.cliente_pessoa_id,
+          vw.situacao_nome,
+          vw.situacao_cor,
+          vw.passageiro_count,
+          vw.raw_json,
+          vw.updated_at,
+          vw.cliente_nome_db AS cliente_nome,
+          vw.solicitacao_nome
+        FROM orcamentos_read vw
         ${where.clause}
-        ORDER BY datetime(o.updated_at) DESC, o.id DESC
+        ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
         LIMIT ? OFFSET ?
       `,
     )
@@ -129,40 +119,31 @@ export async function getOrcamentosKanbanPage(
   situacao = "",
 ) {
   const where = buildLikeWhere(query, [
-    "o.id",
-    "o.identificador",
-    "o.cliente_pessoa_id",
-    "p.nome",
-    "o.raw_json",
+    "vw.id",
+    "vw.identificador",
+    "vw.cliente_pessoa_id",
+    "vw.cliente_nome_db",
+    "vw.raw_json",
   ]);
   const rows = db
     .prepare(
       `
         SELECT
-          o.id,
-          o.identificador,
-          o.cliente_pessoa_id,
-          o.situacao_codigo,
-          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
-          COALESCE(s.cor, o.situacao_cor) AS situacao_cor,
-          COALESCE(s.ordem, '') AS situacao_ordem,
-          o.passageiro_count,
-          o.raw_json,
-          o.updated_at,
-          p.nome AS cliente_nome,
-          (
-            SELECT sl.nome
-            FROM solicitacoes sl
-            WHERE sl.linked_orcamento_id = o.id
-               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
-            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
-            LIMIT 1
-          ) AS solicitacao_nome
-        FROM orcamentos o
-        LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
-        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
+          vw.id,
+          vw.identificador,
+          vw.cliente_pessoa_id,
+          vw.situacao_codigo,
+          vw.situacao_nome,
+          vw.situacao_cor,
+          vw.situacao_ordem,
+          vw.passageiro_count,
+          vw.raw_json,
+          vw.updated_at,
+          vw.cliente_nome_db AS cliente_nome,
+          vw.solicitacao_nome
+        FROM orcamentos_read vw
         ${where.clause}
-        ORDER BY datetime(o.updated_at) DESC, o.id DESC
+        ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
       `,
     )
     .all(...where.params) as Array<{
@@ -393,25 +374,22 @@ export async function getSolicitacoesPage(
   date = "",
 ) {
   const where = buildLikeWhere(query, [
-    "sl.id",
-    "sl.nome",
-    "sl.email",
-    "sl.telefone",
-    "sl.origem",
-    "sl.destino",
-    "sl.linked_orcamento_id",
-    "sl.linked_orcamento_identificador",
-    "sl.raw_json",
-    "o.situacao_nome",
-    "s.nome",
+    "vw.id",
+    "vw.nome",
+    "vw.email",
+    "vw.telefone",
+    "vw.origem",
+    "vw.destino",
+    "vw.linked_orcamento_id",
+    "vw.linked_orcamento_identificador",
+    "vw.raw_json",
+    "vw.situacao_nome",
   ]);
   const dateFilter = buildSolicitacaoDateWhere(date, where.clause ? "AND" : "WHERE");
   const total = readFilteredCount(
     `
       SELECT COUNT(*)
-      FROM solicitacoes sl
-      LEFT JOIN orcamentos o ON o.id = sl.linked_orcamento_id
-      LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
+      FROM solicitacoes_read vw
       ${where.clause}
       ${dateFilter.clause}
     `,
@@ -421,31 +399,29 @@ export async function getSolicitacoesPage(
     .prepare(
       `
         SELECT
-          sl.id,
-          sl.nome,
-          sl.email,
-          sl.telefone,
-          sl.origem,
-          sl.destino,
-          sl.data_ida,
-          sl.data_volta,
-          sl.adultos,
-          sl.criancas,
-          sl.possui_flexibilidade,
-          sl.observacao,
-          sl.data_solicitacao,
-          sl.linked_orcamento_id,
-          sl.linked_orcamento_identificador,
-          sl.raw_json,
-          sl.updated_at,
-          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
-          COALESCE(s.cor, o.situacao_cor) AS situacao_cor
-        FROM solicitacoes sl
-        LEFT JOIN orcamentos o ON o.id = sl.linked_orcamento_id
-        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
+          vw.id,
+          vw.nome,
+          vw.email,
+          vw.telefone,
+          vw.origem,
+          vw.destino,
+          vw.data_ida,
+          vw.data_volta,
+          vw.adultos,
+          vw.criancas,
+          vw.possui_flexibilidade,
+          vw.observacao,
+          vw.data_solicitacao,
+          vw.linked_orcamento_id,
+          vw.linked_orcamento_identificador,
+          vw.raw_json,
+          vw.updated_at,
+          vw.situacao_nome,
+          vw.situacao_cor
+        FROM solicitacoes_read vw
         ${where.clause}
         ${dateFilter.clause}
-        ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+        ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
         LIMIT ? OFFSET ?
       `,
     )
@@ -494,19 +470,17 @@ export async function getSolicitacoesPage(
 
 export async function getVendasPage(page: number, perPage: number, query = "") {
   const where = buildLikeWhere(query, [
-    "v.id",
-    "v.orcamento_identificador",
-    "v.orcamento_id",
-    "p.nome",
-    "v.raw_json",
-    "o.raw_json",
+    "vw.id",
+    "vw.orcamento_identificador",
+    "vw.orcamento_id",
+    "vw.cliente_nome_db",
+    "vw.venda_raw_json",
+    "vw.orcamento_raw_json",
   ]);
   const total = readFilteredCount(
     `
       SELECT COUNT(*)
-      FROM vendas v
-      LEFT JOIN orcamentos o ON o.id = v.orcamento_id
-      LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+      FROM vendas_read vw
       ${where.clause}
     `,
     where.params,
@@ -515,28 +489,19 @@ export async function getVendasPage(page: number, perPage: number, query = "") {
     .prepare(
       `
         SELECT
-          v.id,
-          v.orcamento_identificador,
-          v.status,
-          v.orcamento_id,
-          v.updated_at,
-          o.cliente_pessoa_id,
-          o.raw_json AS orcamento_raw_json,
-          p.nome AS cliente_nome,
-          (
-            SELECT sl.nome
-            FROM solicitacoes sl
-            WHERE sl.linked_orcamento_id = o.id
-               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
-            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
-            LIMIT 1
-          ) AS solicitacao_nome,
-          v.raw_json AS venda_raw_json
-        FROM vendas v
-        LEFT JOIN orcamentos o ON o.id = v.orcamento_id
-        LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+          vw.id,
+          vw.orcamento_identificador,
+          vw.status,
+          vw.orcamento_id,
+          vw.updated_at,
+          vw.cliente_pessoa_id,
+          vw.orcamento_raw_json,
+          vw.cliente_nome_db AS cliente_nome,
+          vw.solicitacao_nome,
+          vw.venda_raw_json
+        FROM vendas_read vw
         ${where.clause}
-        ORDER BY datetime(v.updated_at) DESC, v.id DESC
+        ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
         LIMIT ? OFFSET ?
       `,
     )
@@ -639,29 +604,27 @@ export async function getSolicitacaoDetail(id: string) {
     .prepare(
       `
         SELECT
-          sl.id,
-          sl.nome,
-          sl.email,
-          sl.telefone,
-          sl.origem,
-          sl.destino,
-          sl.data_ida,
-          sl.data_volta,
-          sl.adultos,
-          sl.criancas,
-          sl.possui_flexibilidade,
-          sl.observacao,
-          sl.data_solicitacao,
-          sl.linked_orcamento_id,
-          sl.linked_orcamento_identificador,
-          sl.updated_at,
-          sl.raw_json,
-          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
-          COALESCE(s.cor, o.situacao_cor) AS situacao_cor
-        FROM solicitacoes sl
-        LEFT JOIN orcamentos o ON o.id = sl.linked_orcamento_id
-        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
-        WHERE sl.id = ?
+          vw.id,
+          vw.nome,
+          vw.email,
+          vw.telefone,
+          vw.origem,
+          vw.destino,
+          vw.data_ida,
+          vw.data_volta,
+          vw.adultos,
+          vw.criancas,
+          vw.possui_flexibilidade,
+          vw.observacao,
+          vw.data_solicitacao,
+          vw.linked_orcamento_id,
+          vw.linked_orcamento_identificador,
+          vw.updated_at,
+          vw.raw_json,
+          vw.situacao_nome,
+          vw.situacao_cor
+        FROM solicitacoes_read vw
+        WHERE vw.id = ?
       `,
     )
     .get(id) as
@@ -703,28 +666,20 @@ export async function getOrcamentoDetail(id: string) {
     .prepare(
       `
         SELECT
-          o.id,
-          o.identificador,
-          o.cliente_pessoa_id,
-          COALESCE(s.nome, o.situacao_nome) AS situacao_nome,
-          COALESCE(s.cor, o.situacao_cor) AS situacao_cor,
+          vw.id,
+          vw.identificador,
+          vw.cliente_pessoa_id,
+          vw.situacao_nome,
+          vw.situacao_cor,
           o.passageiro_count,
           o.passageiro_ids_json,
-          o.updated_at,
-          o.raw_json,
-          p.nome AS cliente_nome,
-          (
-            SELECT sl.nome
-            FROM solicitacoes sl
-            WHERE sl.linked_orcamento_id = o.id
-               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
-            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
-            LIMIT 1
-          ) AS solicitacao_nome
-        FROM orcamentos o
-        LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
-        LEFT JOIN situacoes s ON s.codigo = o.situacao_codigo
-        WHERE o.id = ?
+          vw.updated_at,
+          vw.raw_json,
+          vw.cliente_nome_db AS cliente_nome,
+          vw.solicitacao_nome
+        FROM orcamentos_read vw
+        JOIN orcamentos o ON o.id = vw.id
+        WHERE vw.id = ?
       `,
     )
     .get(id) as
@@ -795,27 +750,18 @@ export async function getVendaDetail(id: string) {
     .prepare(
       `
         SELECT
-          v.id,
-          v.orcamento_id,
-          v.orcamento_identificador,
-          v.status,
-          v.updated_at,
-          v.raw_json,
-          o.cliente_pessoa_id,
-          o.raw_json AS orcamento_raw_json,
-          p.nome AS cliente_nome,
-          (
-            SELECT sl.nome
-            FROM solicitacoes sl
-            WHERE sl.linked_orcamento_id = o.id
-               OR (o.identificador IS NOT NULL AND sl.linked_orcamento_identificador = o.identificador)
-            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
-            LIMIT 1
-          ) AS solicitacao_nome
-        FROM vendas v
-        LEFT JOIN orcamentos o ON o.id = v.orcamento_id
-        LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
-        WHERE v.id = ?
+          vw.id,
+          vw.orcamento_id,
+          vw.orcamento_identificador,
+          vw.status,
+          vw.updated_at,
+          vw.venda_raw_json AS raw_json,
+          vw.cliente_pessoa_id,
+          vw.orcamento_raw_json,
+          vw.cliente_nome_db AS cliente_nome,
+          vw.solicitacao_nome
+        FROM vendas_read vw
+        WHERE vw.id = ?
       `,
     )
     .get(id) as
