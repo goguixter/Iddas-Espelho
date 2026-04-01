@@ -39,12 +39,13 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
     "vw.identificador",
     "vw.cliente_pessoa_id",
     "vw.cliente_nome_db",
+    "vw.solicitacao_nome",
     "vw.raw_json",
   ]);
   const total = readFilteredCount(
     `
       SELECT COUNT(*)
-      FROM orcamentos_read vw
+      FROM orcamentos_projection vw
       ${where.clause}
     `,
     where.params,
@@ -61,9 +62,9 @@ export async function getOrcamentosPage(page: number, perPage: number, query = "
           vw.passageiro_count,
           vw.raw_json,
           vw.updated_at,
-          vw.cliente_nome_db AS cliente_nome,
+          COALESCE(vw.cliente_nome_db, vw.solicitacao_nome) AS cliente_nome,
           vw.solicitacao_nome
-        FROM orcamentos_read vw
+        FROM orcamentos_projection vw
         ${where.clause}
         ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
         LIMIT ? OFFSET ?
@@ -123,6 +124,7 @@ export async function getOrcamentosKanbanPage(
     "vw.identificador",
     "vw.cliente_pessoa_id",
     "vw.cliente_nome_db",
+    "vw.solicitacao_nome",
     "vw.raw_json",
   ]);
   const rows = db
@@ -139,9 +141,9 @@ export async function getOrcamentosKanbanPage(
           vw.passageiro_count,
           vw.raw_json,
           vw.updated_at,
-          vw.cliente_nome_db AS cliente_nome,
+          COALESCE(vw.cliente_nome_db, vw.solicitacao_nome) AS cliente_nome,
           vw.solicitacao_nome
-        FROM orcamentos_read vw
+        FROM orcamentos_projection vw
         ${where.clause}
         ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
       `,
@@ -382,6 +384,8 @@ export async function getSolicitacoesPage(
     "vw.destino",
     "vw.linked_orcamento_id",
     "vw.linked_orcamento_identificador",
+    "vw.match_status",
+    "vw.match_reason",
     "vw.raw_json",
     "vw.situacao_nome",
   ]);
@@ -389,7 +393,7 @@ export async function getSolicitacoesPage(
   const total = readFilteredCount(
     `
       SELECT COUNT(*)
-      FROM solicitacoes_read vw
+      FROM solicitacoes_projection vw
       ${where.clause}
       ${dateFilter.clause}
     `,
@@ -414,11 +418,13 @@ export async function getSolicitacoesPage(
           vw.data_solicitacao,
           vw.linked_orcamento_id,
           vw.linked_orcamento_identificador,
+          vw.match_status,
+          vw.match_reason,
           vw.raw_json,
           vw.updated_at,
           vw.situacao_nome,
           vw.situacao_cor
-        FROM solicitacoes_read vw
+        FROM solicitacoes_projection vw
         ${where.clause}
         ${dateFilter.clause}
         ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
@@ -436,6 +442,8 @@ export async function getSolicitacoesPage(
       id: string;
       linked_orcamento_id: string | null;
       linked_orcamento_identificador: string | null;
+      match_reason: string | null;
+      match_status: string | null;
       nome: string | null;
       observacao: string | null;
       origem: string | null;
@@ -456,6 +464,8 @@ export async function getSolicitacoesPage(
     id: row.id,
     linked_orcamento_id: row.linked_orcamento_id,
     linked_orcamento_identificador: row.linked_orcamento_identificador,
+    match_reason: row.match_reason,
+    match_status: row.match_status,
     nome: row.nome,
     origem: row.origem,
     situacao_cor: row.situacao_cor,
@@ -480,7 +490,7 @@ export async function getVendasPage(page: number, perPage: number, query = "") {
   const total = readFilteredCount(
     `
       SELECT COUNT(*)
-      FROM vendas_read vw
+      FROM vendas_projection vw
       ${where.clause}
     `,
     where.params,
@@ -499,7 +509,7 @@ export async function getVendasPage(page: number, perPage: number, query = "") {
           vw.cliente_nome_db AS cliente_nome,
           vw.solicitacao_nome,
           vw.venda_raw_json
-        FROM vendas_read vw
+        FROM vendas_projection vw
         ${where.clause}
         ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
         LIMIT ? OFFSET ?
@@ -619,11 +629,13 @@ export async function getSolicitacaoDetail(id: string) {
           vw.data_solicitacao,
           vw.linked_orcamento_id,
           vw.linked_orcamento_identificador,
+          vw.match_status,
+          vw.match_reason,
           vw.updated_at,
           vw.raw_json,
           vw.situacao_nome,
           vw.situacao_cor
-        FROM solicitacoes_read vw
+        FROM solicitacoes_projection vw
         WHERE vw.id = ?
       `,
     )
@@ -639,6 +651,8 @@ export async function getSolicitacaoDetail(id: string) {
         id: string;
         linked_orcamento_id: string | null;
         linked_orcamento_identificador: string | null;
+        match_reason: string | null;
+        match_status: string | null;
         nome: string | null;
         observacao: string | null;
         origem: string | null;
@@ -675,9 +689,9 @@ export async function getOrcamentoDetail(id: string) {
           o.passageiro_ids_json,
           vw.updated_at,
           vw.raw_json,
-          vw.cliente_nome_db AS cliente_nome,
+          COALESCE(vw.cliente_nome_db, vw.solicitacao_nome) AS cliente_nome,
           vw.solicitacao_nome
-        FROM orcamentos_read vw
+        FROM orcamentos_projection vw
         JOIN orcamentos o ON o.id = vw.id
         WHERE vw.id = ?
       `,
@@ -760,7 +774,7 @@ export async function getVendaDetail(id: string) {
           vw.orcamento_raw_json,
           vw.cliente_nome_db AS cliente_nome,
           vw.solicitacao_nome
-        FROM vendas_read vw
+        FROM vendas_projection vw
         WHERE vw.id = ?
       `,
     )

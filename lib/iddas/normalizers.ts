@@ -9,6 +9,7 @@ import {
 
 export type OrcamentoRecord = {
   cliente_pessoa_id: string | null;
+  created_at_source: string | null;
   detail_synced_at: string;
   id: string;
   identificador: string | null;
@@ -60,6 +61,8 @@ export type SolicitacaoRecord = {
   last_seen_at: string;
   linked_orcamento_id: string | null;
   linked_orcamento_identificador: string | null;
+  match_reason: string | null;
+  match_status: string;
   needs_detail: number;
   nome: string | null;
   observacao: string | null;
@@ -115,6 +118,10 @@ export function normalizeOrcamento(detail: IddasObject, syncedAt: string): Orcam
       readString(detail.identificador) ??
       readString(detail.codigo) ??
       readString(detail.orcamento),
+    created_at_source:
+      readString(detail.created_at) ??
+      readString(detail.data_criacao) ??
+      readString(detail.data_orcamento),
     cliente_pessoa_id: clientePessoaId,
     situacao_codigo:
       readString(detail.situacao) ??
@@ -145,6 +152,7 @@ export function normalizeOrcamentoSummary(
 ): Pick<
   OrcamentoRecord,
   | "cliente_pessoa_id"
+  | "created_at_source"
   | "id"
   | "identificador"
   | "last_seen_at"
@@ -172,6 +180,10 @@ export function normalizeOrcamentoSummary(
       readString(summary.identificador) ??
       readString(summary.codigo) ??
       readString(summary.orcamento),
+    created_at_source:
+      readString(summary.created_at) ??
+      readString(summary.data_criacao) ??
+      readString(summary.data_orcamento),
     cliente_pessoa_id: pickReferenceId(summary, [
       "cliente",
       "cliente.pessoa_id",
@@ -290,6 +302,8 @@ export function normalizeSolicitacao(
     id: requireString(readId(detail), "solicitacao.id"),
     linked_orcamento_id: null,
     linked_orcamento_identificador: null,
+    match_reason: null,
+    match_status: "unmatched",
     nome: readString(detail.nome),
     observacao: readString(detail.observacao),
     origem: readString(detail.origem),
@@ -325,6 +339,8 @@ export function normalizeSolicitacaoSummary(
   | "last_seen_at"
   | "linked_orcamento_id"
   | "linked_orcamento_identificador"
+  | "match_reason"
+  | "match_status"
   | "needs_detail"
   | "nome"
   | "observacao"
@@ -359,6 +375,8 @@ export function normalizeSolicitacaoSummary(
     last_seen_at: syncedAt,
     linked_orcamento_id: null,
     linked_orcamento_identificador: null,
+    match_reason: null,
+    match_status: "unmatched",
     needs_detail: 0,
     nome: readString(summary.nome),
     observacao: readString(summary.observacao),

@@ -1,14 +1,16 @@
 export type SyncStatus = "idle" | "running" | "completed" | "cancelled" | "failed";
 
-export type SyncScope = "global" | "orcamentos" | "solicitacoes";
+export type SyncScope = "orcamentos" | "solicitacoes" | "pessoas" | "vendas";
 
 export type SyncStateRecord = {
   cancel_requested: number;
   current_item_id: string | null;
   current_page: number | null;
   current_stage: string | null;
+  details_synced: number;
   error: string | null;
   items_created: number;
+  items_skipped: number;
   items_synced: number;
   last_synced_at: string | null;
   next_page: number;
@@ -23,14 +25,18 @@ export type SyncStateRecord = {
   secondary_synced: number;
   related_created: number;
   related_synced: number;
+  reconciled_synced: number;
   status: SyncStatus;
+  queue_pending: number;
   vendas_created: number;
   vendas_synced: number;
 };
 
 export type SyncDashboardState = {
   orcamentos: SyncStateRecord;
+  pessoas: SyncStateRecord;
   solicitacoes: SyncStateRecord;
+  vendas: SyncStateRecord;
 };
 
 export function translateSyncStatus(status: SyncStatus) {

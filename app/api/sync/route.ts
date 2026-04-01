@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   isIddasSyncRunning,
+  resetIddasSyncScope,
   requestCancelIddasSync,
   syncIddasScope,
 } from "@/lib/iddas/mirror";
@@ -52,6 +53,23 @@ export async function DELETE(request: Request) {
   return NextResponse.json(requestCancelIddasSync(scope), { status: 202 });
 }
 
+export async function PATCH(request: Request) {
+  try {
+    const body = (await requestJson(request)) as { scope?: SyncScope } | null;
+    const scope = normalizeScope(body?.scope);
+
+    logSync("warn", "sync.api.reset", { scope });
+    return NextResponse.json(resetIddasSyncScope(scope), { status: 200 });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Falha ao resetar o sync.";
+    const status =
+      message.includes("Pare o job antes de resetar") ? 409 : 500;
+
+    return NextResponse.json({ ok: false, error: message }, { status });
+  }
+}
+
 async function requestJson(request: Request) {
   try {
     return await request.json();
@@ -61,5 +79,9 @@ async function requestJson(request: Request) {
 }
 
 function normalizeScope(scope?: SyncScope) {
-  return scope === "solicitacoes" ? "solicitacoes" : "orcamentos";
+  if (scope === "solicitacoes" || scope === "pessoas" || scope === "vendas") {
+    return scope;
+  }
+
+  return "orcamentos";
 }

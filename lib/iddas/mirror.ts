@@ -1,13 +1,27 @@
-import { db } from "@/lib/db";
+import {
+  db,
+  refreshOrcamentosProjectionByIds,
+  refreshOrcamentosProjectionByPessoaIds,
+  refreshOrcamentosProjectionBySolicitacaoIds,
+  refreshSolicitacoesProjectionByIds,
+  refreshSolicitacoesProjectionByOrcamentoIds,
+  refreshVendasProjectionByIds,
+  refreshVendasProjectionByOrcamentoIds,
+  refreshVendasProjectionByPessoaIds,
+  refreshVendasProjectionBySolicitacaoIds,
+} from "@/lib/db";
 import { env } from "@/lib/env";
-import { readId } from "@/lib/iddas/accessors";
-import { fetchIddasDetail, fetchIddasList } from "@/lib/iddas/client";
+import { pickReferenceId, readId, readString } from "@/lib/iddas/accessors";
+import {
+  fetchIddasDetail,
+  fetchIddasList,
+  type IddasObject,
+} from "@/lib/iddas/client";
 import {
   getIddasCotacaoRange,
   normalizeCotacaoRange,
 } from "@/lib/iddas/date-range";
 import {
-  extractPersonIdsFromOrcamento,
   normalizeOrcamento,
   normalizeOrcamentoSummary,
   normalizePessoa,
@@ -17,13 +31,18 @@ import {
   normalizeVenda,
 } from "@/lib/iddas/normalizers";
 import { logSync } from "@/lib/sync/logger";
-import { getSyncStateRecord, updateSyncStateRecord } from "@/lib/sync/store";
+import {
+  getSyncStateRecord,
+  resetSyncStateRecord,
+  updateSyncStateRecord,
+} from "@/lib/sync/store";
 import type { SyncScope } from "@/lib/sync/types";
 
 const upsertOrcamentoSummary = db.prepare(`
   INSERT INTO orcamentos (
     id,
     identificador,
+    created_at_source,
     cliente_pessoa_id,
     situacao_codigo,
     situacao_nome,
@@ -43,6 +62,7 @@ const upsertOrcamentoSummary = db.prepare(`
   VALUES (
     @id,
     @identificador,
+    @created_at_source,
     @cliente_pessoa_id,
     @situacao_codigo,
     @situacao_nome,
@@ -61,6 +81,7 @@ const upsertOrcamentoSummary = db.prepare(`
   )
   ON CONFLICT(id) DO UPDATE SET
     identificador = COALESCE(excluded.identificador, orcamentos.identificador),
+    created_at_source = COALESCE(excluded.created_at_source, orcamentos.created_at_source),
     cliente_pessoa_id = COALESCE(excluded.cliente_pessoa_id, orcamentos.cliente_pessoa_id),
     situacao_codigo = COALESCE(excluded.situacao_codigo, orcamentos.situacao_codigo),
     situacao_nome = COALESCE(excluded.situacao_nome, orcamentos.situacao_nome),
@@ -82,6 +103,7 @@ const upsertOrcamentoDetail = db.prepare(`
   INSERT INTO orcamentos (
     id,
     identificador,
+    created_at_source,
     cliente_pessoa_id,
     situacao_codigo,
     situacao_nome,
@@ -101,6 +123,7 @@ const upsertOrcamentoDetail = db.prepare(`
   VALUES (
     @id,
     @identificador,
+    @created_at_source,
     @cliente_pessoa_id,
     @situacao_codigo,
     @situacao_nome,
@@ -119,6 +142,7 @@ const upsertOrcamentoDetail = db.prepare(`
   )
   ON CONFLICT(id) DO UPDATE SET
     identificador = excluded.identificador,
+    created_at_source = excluded.created_at_source,
     cliente_pessoa_id = excluded.cliente_pessoa_id,
     situacao_codigo = excluded.situacao_codigo,
     situacao_nome = excluded.situacao_nome,
@@ -249,6 +273,8 @@ const upsertSolicitacaoSummary = db.prepare(`
     data_solicitacao,
     linked_orcamento_id,
     linked_orcamento_identificador,
+    match_status,
+    match_reason,
     raw_summary_json,
     raw_json,
     source_updated_at,
@@ -275,6 +301,8 @@ const upsertSolicitacaoSummary = db.prepare(`
     @data_solicitacao,
     @linked_orcamento_id,
     @linked_orcamento_identificador,
+    @match_status,
+    @match_reason,
     @raw_summary_json,
     @raw_json,
     @source_updated_at,
@@ -298,6 +326,8 @@ const upsertSolicitacaoSummary = db.prepare(`
     possui_flexibilidade = COALESCE(excluded.possui_flexibilidade, solicitacoes.possui_flexibilidade),
     observacao = COALESCE(excluded.observacao, solicitacoes.observacao),
     data_solicitacao = COALESCE(excluded.data_solicitacao, solicitacoes.data_solicitacao),
+    match_status = COALESCE(solicitacoes.match_status, excluded.match_status),
+    match_reason = COALESCE(solicitacoes.match_reason, excluded.match_reason),
     raw_summary_json = excluded.raw_summary_json,
     raw_json = CASE
       WHEN solicitacoes.detail_synced_at IS NULL THEN excluded.raw_json
@@ -328,6 +358,8 @@ const upsertSolicitacaoDetail = db.prepare(`
     data_solicitacao,
     linked_orcamento_id,
     linked_orcamento_identificador,
+    match_status,
+    match_reason,
     raw_summary_json,
     raw_json,
     source_updated_at,
@@ -354,6 +386,8 @@ const upsertSolicitacaoDetail = db.prepare(`
     @data_solicitacao,
     @linked_orcamento_id,
     @linked_orcamento_identificador,
+    @match_status,
+    @match_reason,
     @raw_summary_json,
     @raw_json,
     @source_updated_at,
@@ -379,6 +413,8 @@ const upsertSolicitacaoDetail = db.prepare(`
     data_solicitacao = excluded.data_solicitacao,
     linked_orcamento_id = COALESCE(solicitacoes.linked_orcamento_id, excluded.linked_orcamento_id),
     linked_orcamento_identificador = COALESCE(solicitacoes.linked_orcamento_identificador, excluded.linked_orcamento_identificador),
+    match_status = COALESCE(solicitacoes.match_status, excluded.match_status),
+    match_reason = COALESCE(solicitacoes.match_reason, excluded.match_reason),
     raw_summary_json = CASE
       WHEN solicitacoes.raw_summary_json = '{}' THEN excluded.raw_summary_json
       ELSE solicitacoes.raw_summary_json
@@ -395,6 +431,12 @@ const upsertSolicitacaoDetail = db.prepare(`
 
 const hasPessoa = db.prepare(`SELECT 1 FROM pessoas WHERE id = ? LIMIT 1`);
 const hasVenda = db.prepare(`SELECT 1 FROM vendas WHERE id = ? LIMIT 1`);
+const getPessoaSnapshot = db.prepare(`
+  SELECT id, nome, email, cpf
+  FROM pessoas
+  WHERE id = ?
+  LIMIT 1
+`);
 
 const getOrcamentoMirrorState = db.prepare(`
   SELECT id, source_hash, source_updated_at, detail_synced_at
@@ -465,6 +507,12 @@ const listPendingSyncTasksByType = db.prepare(`
   ORDER BY id ASC
 `);
 
+const countPendingSyncTasks = db.prepare(`
+  SELECT COUNT(*) AS total
+  FROM sync_tasks
+  WHERE scope = ? AND status = 'pending'
+`);
+
 const markSyncTaskFailed = db.prepare(`
   UPDATE sync_tasks
   SET
@@ -478,6 +526,97 @@ const markSyncTaskFailed = db.prepare(`
 const deleteSyncTask = db.prepare(`
   DELETE FROM sync_tasks
   WHERE id = ?
+`);
+
+const deleteSyncTasksByScope = db.prepare(`
+  DELETE FROM sync_tasks
+  WHERE scope = ?
+`);
+
+const deleteSyncTaskByKey = db.prepare(`
+  DELETE FROM sync_tasks
+  WHERE task_key = ?
+`);
+
+const resetOrcamentoNeedsDetail = db.prepare(`
+  UPDATE orcamentos
+  SET needs_detail = 0
+`);
+
+const resetSolicitacaoNeedsDetail = db.prepare(`
+  UPDATE solicitacoes
+  SET needs_detail = 0
+`);
+
+const reconcileSolicitacoesByCreatedAtWindow = db.prepare(`
+  UPDATE solicitacoes
+  SET
+    linked_orcamento_id = (
+      SELECT o.id
+      FROM orcamentos o
+      WHERE ABS(unixepoch(o.created_at_source) - unixepoch(data_solicitacao)) <= 5
+      LIMIT 1
+    ),
+    linked_orcamento_identificador = (
+      SELECT o.identificador
+      FROM orcamentos o
+      WHERE ABS(unixepoch(o.created_at_source) - unixepoch(data_solicitacao)) <= 5
+      LIMIT 1
+    ),
+    match_status = 'confirmed',
+    match_reason = 'created_at_5s'
+  WHERE data_solicitacao IS NOT NULL
+    AND (
+      linked_orcamento_id IS NULL
+      OR TRIM(COALESCE(linked_orcamento_id, '')) = ''
+    )
+    AND (
+      SELECT COUNT(*)
+      FROM orcamentos o
+      WHERE ABS(unixepoch(o.created_at_source) - unixepoch(data_solicitacao)) <= 5
+    ) = 1
+`);
+
+const flagSolicitacoesCreatedAtConflict = db.prepare(`
+  UPDATE solicitacoes
+  SET
+    match_status = 'manual_review',
+    match_reason = 'created_at_conflict'
+  WHERE data_solicitacao IS NOT NULL
+    AND (
+      linked_orcamento_id IS NULL
+      OR TRIM(COALESCE(linked_orcamento_id, '')) = ''
+    )
+    AND (
+      SELECT COUNT(*)
+      FROM orcamentos o
+      WHERE ABS(unixepoch(o.created_at_source) - unixepoch(data_solicitacao)) <= 5
+    ) > 1
+`);
+
+const flagSolicitacoesCreatedAtMismatch = db.prepare(`
+  UPDATE solicitacoes
+  SET
+    match_status = 'manual_review',
+    match_reason = 'created_at_mismatch'
+  WHERE data_solicitacao IS NOT NULL
+    AND linked_orcamento_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM orcamentos o
+      WHERE ABS(unixepoch(o.created_at_source) - unixepoch(data_solicitacao)) <= 5
+    )
+    AND (
+      SELECT COUNT(*)
+      FROM orcamentos o
+      WHERE ABS(unixepoch(o.created_at_source) - unixepoch(data_solicitacao)) <= 5
+    ) = 1
+    AND linked_orcamento_id <> (
+      SELECT o.id
+      FROM orcamentos o
+      WHERE ABS(unixepoch(o.created_at_source) - unixepoch(data_solicitacao)) <= 5
+      LIMIT 1
+    )
 `);
 
 const reconcileSolicitacoesOrcamentoIdByIdentificador = db.prepare(`
@@ -531,6 +670,30 @@ const reconcileSolicitacoesIdentificadorByOrcamentoId = db.prepare(`
     )
 `);
 
+const markLinkedSolicitacoesConfirmed = db.prepare(`
+  UPDATE solicitacoes
+  SET
+    match_status = 'confirmed',
+    match_reason = CASE
+      WHEN match_reason = 'created_at_5s' THEN 'created_at_5s'
+      ELSE 'linked'
+    END
+  WHERE linked_orcamento_id IS NOT NULL
+    AND match_status <> 'manual_review'
+`);
+
+const markUnmatchedSolicitacoes = db.prepare(`
+  UPDATE solicitacoes
+  SET
+    match_status = 'unmatched',
+    match_reason = NULL
+  WHERE (
+      linked_orcamento_id IS NULL
+      OR TRIM(COALESCE(linked_orcamento_id, '')) = ''
+    )
+    AND match_status <> 'manual_review'
+`);
+
 type SyncResult = {
   last_synced_at: string;
   ok: true;
@@ -544,6 +707,13 @@ type MirrorStateRow = {
   id: string;
   source_hash: string | null;
   source_updated_at: string | null;
+};
+
+type PessoaReference = {
+  cpf: string | null;
+  email: string | null;
+  id: string;
+  nome: string | null;
 };
 
 type SyncTaskType = "pessoa" | "venda_orcamento";
@@ -560,15 +730,26 @@ type SyncTaskRow = {
 
 let activeOrcamentosSync: Promise<SyncResult> | null = null;
 let activeSolicitacoesSync: Promise<SyncResult> | null = null;
+let activePessoasSync: Promise<SyncResult> | null = null;
+let activeVendasSync: Promise<SyncResult> | null = null;
 
 export async function syncIddasScope(
-  scope: Extract<SyncScope, "orcamentos" | "solicitacoes">,
+  scope: Extract<SyncScope, "orcamentos" | "solicitacoes" | "pessoas" | "vendas">,
   input?: {
     periodo_cotacao_final?: string;
     periodo_cotacao_inicio?: string;
   },
 ) {
-  return scope === "solicitacoes" ? syncSolicitacoesMirror() : syncIddasMirror(input);
+  switch (scope) {
+    case "solicitacoes":
+      return syncSolicitacoesMirror();
+    case "pessoas":
+      return syncPessoasMirror();
+    case "vendas":
+      return syncVendasMirror();
+    default:
+      return syncIddasMirror(input);
+  }
 }
 
 export async function syncIddasMirror(input?: {
@@ -606,6 +787,38 @@ export async function syncSolicitacoesMirror() {
   }
 }
 
+export async function syncPessoasMirror() {
+  if (activePessoasSync) {
+    logSync("info", "sync.pessoas.reuse-active-job");
+    return activePessoasSync;
+  }
+
+  logSync("info", "sync.pessoas.start-request");
+  activePessoasSync = runPessoasSync();
+
+  try {
+    return await activePessoasSync;
+  } finally {
+    activePessoasSync = null;
+  }
+}
+
+export async function syncVendasMirror() {
+  if (activeVendasSync) {
+    logSync("info", "sync.vendas.reuse-active-job");
+    return activeVendasSync;
+  }
+
+  logSync("info", "sync.vendas.start-request");
+  activeVendasSync = runVendasSync();
+
+  try {
+    return await activeVendasSync;
+  } finally {
+    activeVendasSync = null;
+  }
+}
+
 async function runOrcamentosSync(input?: {
   periodo_cotacao_final?: string;
   periodo_cotacao_inicio?: string;
@@ -617,14 +830,13 @@ async function runOrcamentosSync(input?: {
     normalizeCotacaoRange(input ?? {}) ??
     getIddasCotacaoRange(env.IDDAS_SYNC_LOOKBACK_DAYS);
   const now = new Date().toISOString();
-  const fetchedPersonIds = new Set<string>();
   let orcamentosCreated = 0;
   let orcamentosCollected = 0;
-  let peopleCreated = 0;
-  let peopleSynced = 0;
-  let vendasCreated = 0;
-  let vendasSynced = 0;
+  let orcamentosDetailed = 0;
+  let orcamentosSkipped = 0;
   let queuedOrcamentos = 0;
+  let reconciledCount = 0;
+  const touchedOrcamentoIds = new Set<string>();
 
   try {
     logSync("info", "sync.started", {
@@ -706,6 +918,8 @@ async function runOrcamentosSync(input?: {
         }
         if (needsDetail) {
           queuedOrcamentos += 1;
+        } else {
+          orcamentosSkipped += 1;
         }
 
         orcamentosCollected += 1;
@@ -719,10 +933,13 @@ async function runOrcamentosSync(input?: {
       }
 
       updateSyncStateRecord(scope, {
+        details_synced: orcamentosDetailed,
         items_created: orcamentosCreated,
+        items_skipped: orcamentosSkipped,
         items_synced: orcamentosCollected,
         orcamentos_created: orcamentosCreated,
         orcamentos_synced: orcamentosCollected,
+        queue_pending: countPendingTasks(scope),
       });
 
       if (summaries.length < env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE) {
@@ -756,6 +973,8 @@ async function runOrcamentosSync(input?: {
       const detail = await fetchIddasDetail("orcamento", orcamentoId);
       const normalized = normalizeOrcamento(detail, now);
       upsertOrcamentoDetail.run(normalized);
+      orcamentosDetailed += 1;
+      touchedOrcamentoIds.add(normalized.id);
 
       logSync("info", "sync.orcamento.detailed", {
         cliente_pessoa_id: normalized.cliente_pessoa_id,
@@ -764,155 +983,29 @@ async function runOrcamentosSync(input?: {
         passageiros: normalized.passageiro_count,
       });
 
-      for (const personId of extractPersonIdsFromOrcamento(normalized)) {
-        enqueueDerivedTask(scope, "pessoa", personId, normalized.id, { personId });
+      for (const personRef of extractReferencedPeople(detail, normalized)) {
+        if (!shouldRefreshPessoa(personRef)) {
+          continue;
+        }
+
+        enqueueDerivedTask("pessoas", "pessoa", personRef.id, normalized.id, {
+          personId: personRef.id,
+        });
       }
 
-      if (normalized.identificador) {
-        enqueueDerivedTask(scope, "venda_orcamento", normalized.id, normalized.id, {
+      if (normalized.identificador && isApprovedOrcamento(normalized)) {
+        enqueueDerivedTask("vendas", "venda_orcamento", normalized.id, normalized.id, {
           identificador: normalized.identificador,
           orcamentoId: normalized.id,
         });
-      }
-    }
-
-    const pendingPessoaTasks = readPendingTasks(scope, "pessoa");
-    logSync("info", "sync.pessoas.pending-tasks", {
-      pending: pendingPessoaTasks.length,
-    });
-
-    for (const task of pendingPessoaTasks) {
-      throwIfCancelRequested(scope);
-
-      const personId = task.entity_id;
-      if (fetchedPersonIds.has(personId)) {
-        deleteSyncTask.run(task.id);
-        continue;
+      } else {
+        deleteSyncTaskByKey.run(`venda_orcamento:${normalized.id}`);
       }
 
       updateSyncStateRecord(scope, {
-        current_item_id: personId,
-        current_stage: "Atualizando pessoas pendentes",
+        details_synced: orcamentosDetailed,
+        queue_pending: countPendingTasks(scope),
       });
-
-      try {
-        const pessoa = await fetchIddasDetail("pessoa", personId);
-        const pessoaAlreadyExists = hasRow(hasPessoa, personId);
-        if (!pessoaAlreadyExists) {
-          peopleCreated += 1;
-        }
-        upsertPessoa.run(normalizePessoa(pessoa, now));
-        fetchedPersonIds.add(personId);
-        peopleSynced += 1;
-        deleteSyncTask.run(task.id);
-
-        logSync("info", "sync.pessoa.processed", {
-          id: personId,
-          new_record: pessoaAlreadyExists ? 0 : 1,
-        });
-
-        updateSyncStateRecord(scope, {
-          people_created: peopleCreated,
-          people_synced: peopleSynced,
-          related_created: peopleCreated,
-          related_synced: peopleSynced,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Falha ao buscar pessoa.";
-
-        if (message.includes("IDDAS respondeu 404")) {
-          fetchedPersonIds.add(personId);
-          deleteSyncTask.run(task.id);
-          logSync("warn", "sync.pessoa.not-found", { id: personId });
-          continue;
-        }
-
-        if (message.includes("IDDAS respondeu 429")) {
-          logSync("warn", "sync.pessoa.rate-limited", { id: personId });
-          continue;
-        }
-
-        markSyncTaskFailed.run(message, now, task.id);
-        logSync("error", "sync.pessoa.error", { id: personId, message });
-        throw error;
-      }
-    }
-
-    const pendingVendaTasks = readPendingTasks(scope, "venda_orcamento");
-    logSync("info", "sync.vendas.pending-tasks", {
-      pending: pendingVendaTasks.length,
-    });
-
-    for (const task of pendingVendaTasks) {
-      throwIfCancelRequested(scope);
-
-      const payload = parseTaskPayload(task.payload_json);
-      const orcamentoId = payload.orcamentoId ?? task.entity_id;
-      const orcamentoIdentificador = payload.identificador;
-
-      if (!orcamentoIdentificador) {
-        deleteSyncTask.run(task.id);
-        continue;
-      }
-
-      for (let vendaPage = 1; vendaPage <= env.IDDAS_SYNC_MAX_PAGES; vendaPage += 1) {
-        throwIfCancelRequested(scope);
-
-        updateSyncStateRecord(scope, {
-          current_item_id: orcamentoId,
-          current_page: vendaPage,
-          current_stage: `Atualizando vendas pendentes de ${orcamentoIdentificador}`,
-        });
-
-        const vendas = await fetchIddasList("venda", vendaPage, env.IDDAS_SYNC_VENDAS_PER_PAGE, {
-          orcamento: orcamentoIdentificador,
-        });
-
-        logSync("info", "sync.vendas.page", {
-          orcamento_id: orcamentoId,
-          orcamento_identificador: orcamentoIdentificador,
-          page: vendaPage,
-          returned: vendas.length,
-        });
-
-        if (vendas.length === 0) {
-          break;
-        }
-
-        for (const venda of vendas) {
-          throwIfCancelRequested(scope);
-
-          const vendaNormalized = normalizeVenda(venda, orcamentoId, orcamentoIdentificador, now);
-          const vendaAlreadyExists = hasRow(hasVenda, vendaNormalized.id);
-          if (!vendaAlreadyExists) {
-            vendasCreated += 1;
-          }
-          upsertVenda.run(vendaNormalized);
-          vendasSynced += 1;
-
-          logSync("info", "sync.venda.processed", {
-            id: vendaNormalized.id,
-            new_record: vendaAlreadyExists ? 0 : 1,
-            orcamento_id: vendaNormalized.orcamento_id,
-            orcamento_identificador: vendaNormalized.orcamento_identificador,
-          });
-
-          updateSyncStateRecord(scope, {
-            current_item_id: vendaNormalized.id,
-            current_stage: "Atualizando vendas pendentes",
-            secondary_created: vendasCreated,
-            secondary_synced: vendasSynced,
-            vendas_created: vendasCreated,
-            vendas_synced: vendasSynced,
-          });
-        }
-
-        if (vendas.length < env.IDDAS_SYNC_VENDAS_PER_PAGE) {
-          break;
-        }
-      }
-
-      deleteSyncTask.run(task.id);
     }
 
     updateSyncStateRecord(scope, {
@@ -922,50 +1015,74 @@ async function runOrcamentosSync(input?: {
     });
 
     const reconciliation = runLocalReconciliation();
+    reconciledCount =
+      reconciliation.linkedByCreatedAt +
+      reconciliation.linkedById +
+      reconciliation.linkedByIdentificador +
+      reconciliation.conflictsByCreatedAt +
+      reconciliation.mismatchesByCreatedAt +
+      reconciliation.confirmedLinked +
+      reconciliation.unmatched;
     logSync("info", "sync.reconciliation.completed", {
+      confirmed_linked: reconciliation.confirmedLinked,
+      conflicts_by_created_at: reconciliation.conflictsByCreatedAt,
+      linked_by_created_at: reconciliation.linkedByCreatedAt,
       linked_by_id: reconciliation.linkedById,
       linked_by_identificador: reconciliation.linkedByIdentificador,
+      mismatches_by_created_at: reconciliation.mismatchesByCreatedAt,
       scope,
+      unmatched: reconciliation.unmatched,
     });
+
+    const touchedIds = [...touchedOrcamentoIds];
+    refreshOrcamentosProjectionByIds(touchedIds);
+    refreshSolicitacoesProjectionByOrcamentoIds(touchedIds);
+    refreshVendasProjectionByOrcamentoIds(touchedIds);
 
     completeScopeState(scope, {
       error: null,
       itemsCreated: orcamentosCreated,
       itemsSynced: orcamentosCollected,
+      itemsSkipped: orcamentosSkipped,
+      detailsSynced: orcamentosDetailed,
       now,
-      peopleCreated,
-      peopleSynced,
-      vendasCreated,
-      vendasSynced,
+      peopleCreated: 0,
+      peopleSynced: 0,
+      queuePending: readPendingIds(listPendingOrcamentoIds).length,
+      reconciledSynced: reconciledCount,
+      vendasCreated: 0,
+      vendasSynced: 0,
     });
 
     logSync("info", "sync.completed", {
       last_synced_at: now,
       orcamentos_collected: orcamentosCollected,
       orcamentos_created: orcamentosCreated,
-      orcamentos_detailed: pendingOrcamentoIds.length,
-      people_created: peopleCreated,
-      people_synced: peopleSynced,
-      vendas_created: vendasCreated,
-      vendas_synced: vendasSynced,
+      orcamentos_detailed: orcamentosDetailed,
+      orcamentos_skipped: orcamentosSkipped,
+      reconciled: reconciledCount,
     });
 
     return {
       ok: true,
       last_synced_at: now,
       orcamentos_synced: orcamentosCollected,
-      people_synced: peopleSynced,
-      vendas_synced: vendasSynced,
+      people_synced: 0,
+      vendas_synced: 0,
     };
   } catch (error) {
     finishScopeWithError(scope, {
       error,
       itemsCreated: orcamentosCreated,
       itemsSynced: orcamentosCollected,
-      peopleCreated,
-      peopleSynced,
-      vendasCreated,
-      vendasSynced,
+      itemsSkipped: orcamentosSkipped,
+      detailsSynced: orcamentosDetailed,
+      peopleCreated: 0,
+      peopleSynced: 0,
+      queuePending: readPendingIds(listPendingOrcamentoIds).length,
+      reconciledSynced: reconciledCount,
+      vendasCreated: 0,
+      vendasSynced: 0,
     });
     throw error;
   }
@@ -973,17 +1090,23 @@ async function runOrcamentosSync(input?: {
 
 async function runSolicitacoesSync(): Promise<SyncResult> {
   const scope: SyncScope = "solicitacoes";
+  const initialState = getSyncStateRecord(scope);
+  const startSolicitacaoPage = Math.max(1, initialState.next_page);
   const now = new Date().toISOString();
   let itemsCreated = 0;
   let itemsCollected = 0;
+  let itemsDetailed = 0;
+  let itemsSkipped = 0;
   let queuedSolicitacoes = 0;
+  let reconciledCount = 0;
+  const touchedSolicitacaoIds = new Set<string>();
 
   try {
-    resetScopeState(scope, now, 1, "Coletando solicitações");
+    resetScopeState(scope, now, startSolicitacaoPage, "Coletando solicitações");
 
     for (
-      let solicitacaoPage = 1;
-      solicitacaoPage <= env.IDDAS_SYNC_MAX_PAGES;
+      let solicitacaoPage = startSolicitacaoPage;
+      solicitacaoPage < startSolicitacaoPage + env.IDDAS_SYNC_MAX_PAGES;
       solicitacaoPage += 1
     ) {
       throwIfCancelRequested(scope);
@@ -1034,6 +1157,8 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
         }
         if (needsDetail) {
           queuedSolicitacoes += 1;
+        } else {
+          itemsSkipped += 1;
         }
         itemsCollected += 1;
 
@@ -1045,8 +1170,11 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
       }
 
       updateSyncStateRecord(scope, {
+        details_synced: itemsDetailed,
         items_created: itemsCreated,
+        items_skipped: itemsSkipped,
         items_synced: itemsCollected,
+        queue_pending: readPendingIds(listPendingSolicitacaoIds).length,
       });
 
       if (solicitacoes.length < env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE) {
@@ -1075,9 +1203,15 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
 
       const detail = await fetchIddasDetail("solicitacao", solicitacaoId);
       upsertSolicitacaoDetail.run(normalizeSolicitacao(detail, now));
+      itemsDetailed += 1;
+      touchedSolicitacaoIds.add(solicitacaoId);
 
       logSync("info", "sync.solicitacao.detailed", {
         id: solicitacaoId,
+      });
+
+      updateSyncStateRecord(scope, {
+        details_synced: itemsDetailed,
       });
     }
 
@@ -1088,22 +1222,44 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
     });
 
     const reconciliation = runLocalReconciliation();
+    reconciledCount =
+      reconciliation.linkedByCreatedAt +
+      reconciliation.linkedById +
+      reconciliation.linkedByIdentificador +
+      reconciliation.conflictsByCreatedAt +
+      reconciliation.mismatchesByCreatedAt +
+      reconciliation.confirmedLinked +
+      reconciliation.unmatched;
     logSync("info", "sync.reconciliation.completed", {
+      confirmed_linked: reconciliation.confirmedLinked,
+      conflicts_by_created_at: reconciliation.conflictsByCreatedAt,
+      linked_by_created_at: reconciliation.linkedByCreatedAt,
       linked_by_id: reconciliation.linkedById,
       linked_by_identificador: reconciliation.linkedByIdentificador,
+      mismatches_by_created_at: reconciliation.mismatchesByCreatedAt,
       scope,
+      unmatched: reconciliation.unmatched,
     });
+
+    const touchedIds = [...touchedSolicitacaoIds];
+    refreshSolicitacoesProjectionByIds(touchedIds);
+    refreshOrcamentosProjectionBySolicitacaoIds(touchedIds);
+    refreshVendasProjectionBySolicitacaoIds(touchedIds);
 
     updateSyncStateRecord(scope, {
       cancel_requested: 0,
       current_item_id: null,
       current_page: null,
       current_stage: "Concluído",
+      details_synced: itemsDetailed,
       error: null,
       items_created: itemsCreated,
+      items_skipped: itemsSkipped,
       items_synced: itemsCollected,
       last_synced_at: now,
       next_page: getSyncStateRecord(scope).next_page,
+      queue_pending: countPendingTasks(scope),
+      reconciled_synced: reconciledCount,
       running_started_at: null,
       status: "completed",
     });
@@ -1124,12 +1280,339 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
       current_item_id: null,
       current_page: null,
       current_stage: cancelled ? "Cancelado" : "Falha no sync",
+      details_synced: itemsDetailed,
       error: cancelled ? null : message,
       items_created: itemsCreated,
+      items_skipped: itemsSkipped,
       items_synced: itemsCollected,
       next_page: getSyncStateRecord(scope).next_page,
+      queue_pending: countPendingTasks(scope),
+      reconciled_synced: reconciledCount,
       running_started_at: null,
       status: cancelled ? "cancelled" : "failed",
+    });
+
+    throw error;
+  }
+}
+
+async function runPessoasSync(): Promise<SyncResult> {
+  const scope: SyncScope = "pessoas";
+  const now = new Date().toISOString();
+  const fetchedPersonIds = new Set<string>();
+  let itemsCreated = 0;
+  let itemsSynced = 0;
+  let itemsSkipped = 0;
+  const touchedPersonIds = new Set<string>();
+
+  try {
+    resetScopeState(scope, now, 1, "Processando fila de pessoas");
+    updateSyncStateRecord(scope, {
+      current_page: null,
+      next_page: 1,
+    });
+
+    const pendingPessoaTasks = readPendingTasks(scope, "pessoa");
+    updateSyncStateRecord(scope, {
+      queue_pending: pendingPessoaTasks.length,
+    });
+
+    logSync("info", "sync.pessoas.pending-tasks", {
+      pending: pendingPessoaTasks.length,
+    });
+
+    for (const task of pendingPessoaTasks) {
+      throwIfCancelRequested(scope);
+
+      const personId = task.entity_id;
+      if (fetchedPersonIds.has(personId)) {
+        itemsSkipped += 1;
+        deleteSyncTask.run(task.id);
+        updateSyncStateRecord(scope, {
+          items_skipped: itemsSkipped,
+          queue_pending: countPendingTasks(scope),
+        });
+        continue;
+      }
+
+      updateSyncStateRecord(scope, {
+        current_item_id: personId,
+        current_stage: "Atualizando pessoa pendente",
+      });
+
+      try {
+        const pessoa = await fetchIddasDetail("pessoa", personId);
+        const pessoaAlreadyExists = hasRow(hasPessoa, personId);
+        if (!pessoaAlreadyExists) {
+          itemsCreated += 1;
+        }
+        upsertPessoa.run(normalizePessoa(pessoa, now));
+        fetchedPersonIds.add(personId);
+        touchedPersonIds.add(personId);
+        itemsSynced += 1;
+        deleteSyncTask.run(task.id);
+
+        logSync("info", "sync.pessoa.processed", {
+          id: personId,
+          new_record: pessoaAlreadyExists ? 0 : 1,
+        });
+
+        updateSyncStateRecord(scope, {
+          items_created: itemsCreated,
+          items_synced: itemsSynced,
+          queue_pending: countPendingTasks(scope),
+          related_created: itemsCreated,
+          related_synced: itemsSynced,
+          people_created: itemsCreated,
+          people_synced: itemsSynced,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Falha ao buscar pessoa.";
+
+        if (message.includes("IDDAS respondeu 404")) {
+          fetchedPersonIds.add(personId);
+          itemsSkipped += 1;
+          deleteSyncTask.run(task.id);
+          logSync("warn", "sync.pessoa.not-found", { id: personId });
+          updateSyncStateRecord(scope, {
+            items_skipped: itemsSkipped,
+            queue_pending: countPendingTasks(scope),
+          });
+          continue;
+        }
+
+        if (message.includes("IDDAS respondeu 429")) {
+          logSync("warn", "sync.pessoa.rate-limited", { id: personId });
+          continue;
+        }
+
+        markSyncTaskFailed.run(message, now, task.id);
+        logSync("error", "sync.pessoa.error", { id: personId, message });
+        throw error;
+      }
+    }
+
+    const touchedIds = [...touchedPersonIds];
+    refreshOrcamentosProjectionByPessoaIds(touchedIds);
+    refreshVendasProjectionByPessoaIds(touchedIds);
+
+    updateSyncStateRecord(scope, {
+      cancel_requested: 0,
+      current_item_id: null,
+      current_page: null,
+      current_stage: "Concluído",
+      details_synced: itemsSynced,
+      error: null,
+      items_created: itemsCreated,
+      items_skipped: itemsSkipped,
+      items_synced: itemsSynced,
+      last_synced_at: now,
+      next_page: 1,
+      people_created: itemsCreated,
+      people_synced: itemsSynced,
+      queue_pending: countPendingTasks(scope),
+      related_created: itemsCreated,
+      related_synced: itemsSynced,
+      running_started_at: null,
+      status: "completed",
+    });
+
+    return {
+      ok: true,
+      last_synced_at: now,
+      orcamentos_synced: 0,
+      people_synced: itemsSynced,
+      vendas_synced: 0,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha inesperada no sync.";
+    const cancelled = error instanceof Error && error.message === "SYNC_CANCELLED";
+
+    updateSyncStateRecord(scope, {
+      cancel_requested: 0,
+      current_item_id: null,
+      current_page: null,
+      current_stage: cancelled ? "Cancelado" : "Falha no sync",
+      details_synced: itemsSynced,
+      error: cancelled ? null : message,
+      items_created: itemsCreated,
+      items_skipped: itemsSkipped,
+      items_synced: itemsSynced,
+      next_page: 1,
+      people_created: itemsCreated,
+      people_synced: itemsSynced,
+      queue_pending: countPendingTasks(scope),
+      related_created: itemsCreated,
+      related_synced: itemsSynced,
+      running_started_at: null,
+      status: cancelled ? "cancelled" : "failed",
+    });
+
+    throw error;
+  }
+}
+
+async function runVendasSync(): Promise<SyncResult> {
+  const scope: SyncScope = "vendas";
+  const now = new Date().toISOString();
+  let itemsCreated = 0;
+  let itemsSynced = 0;
+  let itemsSkipped = 0;
+  const touchedVendaIds = new Set<string>();
+
+  try {
+    resetScopeState(scope, now, 1, "Processando fila de vendas");
+    updateSyncStateRecord(scope, {
+      current_page: null,
+      next_page: 1,
+    });
+
+    const pendingVendaTasks = readPendingTasks(scope, "venda_orcamento");
+    updateSyncStateRecord(scope, {
+      queue_pending: pendingVendaTasks.length,
+    });
+
+    logSync("info", "sync.vendas.pending-tasks", {
+      pending: pendingVendaTasks.length,
+    });
+
+    for (const task of pendingVendaTasks) {
+      throwIfCancelRequested(scope);
+
+      const payload = parseTaskPayload(task.payload_json);
+      const orcamentoId = payload.orcamentoId ?? task.entity_id;
+      const orcamentoIdentificador = payload.identificador;
+
+      if (!orcamentoIdentificador) {
+        itemsSkipped += 1;
+        deleteSyncTask.run(task.id);
+        updateSyncStateRecord(scope, {
+          items_skipped: itemsSkipped,
+          queue_pending: countPendingTasks(scope),
+        });
+        continue;
+      }
+
+      for (let vendaPage = 1; vendaPage <= env.IDDAS_SYNC_MAX_PAGES; vendaPage += 1) {
+        throwIfCancelRequested(scope);
+
+        updateSyncStateRecord(scope, {
+          current_item_id: orcamentoId,
+          current_page: vendaPage,
+          current_stage: `Atualizando vendas de ${orcamentoIdentificador}`,
+        });
+
+        const vendas = await fetchIddasList("venda", vendaPage, env.IDDAS_SYNC_VENDAS_PER_PAGE, {
+          orcamento: orcamentoIdentificador,
+        });
+
+        logSync("info", "sync.vendas.page", {
+          orcamento_id: orcamentoId,
+          orcamento_identificador: orcamentoIdentificador,
+          page: vendaPage,
+          returned: vendas.length,
+        });
+
+        if (vendas.length === 0) {
+          break;
+        }
+
+        for (const venda of vendas) {
+          throwIfCancelRequested(scope);
+
+          const vendaNormalized = normalizeVenda(venda, orcamentoId, orcamentoIdentificador, now);
+          const vendaAlreadyExists = hasRow(hasVenda, vendaNormalized.id);
+          if (!vendaAlreadyExists) {
+            itemsCreated += 1;
+          }
+          upsertVenda.run(vendaNormalized);
+          touchedVendaIds.add(vendaNormalized.id);
+          itemsSynced += 1;
+
+          logSync("info", "sync.venda.processed", {
+            id: vendaNormalized.id,
+            new_record: vendaAlreadyExists ? 0 : 1,
+            orcamento_id: vendaNormalized.orcamento_id,
+            orcamento_identificador: vendaNormalized.orcamento_identificador,
+          });
+
+          updateSyncStateRecord(scope, {
+            current_item_id: vendaNormalized.id,
+            current_stage: "Atualizando venda pendente",
+            details_synced: itemsSynced,
+            items_created: itemsCreated,
+            items_synced: itemsSynced,
+            queue_pending: countPendingTasks(scope),
+            secondary_created: itemsCreated,
+            secondary_synced: itemsSynced,
+            vendas_created: itemsCreated,
+            vendas_synced: itemsSynced,
+          });
+        }
+
+        if (vendas.length < env.IDDAS_SYNC_VENDAS_PER_PAGE) {
+          break;
+        }
+      }
+
+      deleteSyncTask.run(task.id);
+      updateSyncStateRecord(scope, {
+        queue_pending: countPendingTasks(scope),
+      });
+    }
+
+    refreshVendasProjectionByIds([...touchedVendaIds]);
+
+    updateSyncStateRecord(scope, {
+      cancel_requested: 0,
+      current_item_id: null,
+      current_page: null,
+      current_stage: "Concluído",
+      details_synced: itemsSynced,
+      error: null,
+      items_created: itemsCreated,
+      items_skipped: itemsSkipped,
+      items_synced: itemsSynced,
+      last_synced_at: now,
+      next_page: 1,
+      queue_pending: countPendingTasks(scope),
+      running_started_at: null,
+      secondary_created: itemsCreated,
+      secondary_synced: itemsSynced,
+      status: "completed",
+      vendas_created: itemsCreated,
+      vendas_synced: itemsSynced,
+    });
+
+    return {
+      ok: true,
+      last_synced_at: now,
+      orcamentos_synced: 0,
+      people_synced: 0,
+      vendas_synced: itemsSynced,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha inesperada no sync.";
+    const cancelled = error instanceof Error && error.message === "SYNC_CANCELLED";
+
+    updateSyncStateRecord(scope, {
+      cancel_requested: 0,
+      current_item_id: null,
+      current_page: null,
+      current_stage: cancelled ? "Cancelado" : "Falha no sync",
+      details_synced: itemsSynced,
+      error: cancelled ? null : message,
+      items_created: itemsCreated,
+      items_skipped: itemsSkipped,
+      items_synced: itemsSynced,
+      next_page: 1,
+      queue_pending: countPendingTasks(scope),
+      running_started_at: null,
+      secondary_created: itemsCreated,
+      secondary_synced: itemsSynced,
+      status: cancelled ? "cancelled" : "failed",
+      vendas_created: itemsCreated,
+      vendas_synced: itemsSynced,
     });
 
     throw error;
@@ -1146,12 +1629,41 @@ export function requestCancelIddasSync(scope: SyncScope) {
   return getSyncStateRecord(scope);
 }
 
+export function resetIddasSyncScope(scope: SyncScope) {
+  if (isIddasSyncRunning(scope)) {
+    throw new Error("Pare o job antes de resetar o estado.");
+  }
+
+  if (scope === "orcamentos") {
+    resetOrcamentoNeedsDetail.run();
+    deleteSyncTasksByScope.run("pessoas");
+    deleteSyncTasksByScope.run("vendas");
+  }
+
+  if (scope === "solicitacoes") {
+    resetSolicitacaoNeedsDetail.run();
+  }
+
+  deleteSyncTasksByScope.run(scope);
+
+  return resetSyncStateRecord(scope);
+}
+
 export function isIddasSyncRunning(scope: SyncScope) {
   return scope === "orcamentos"
     ? Boolean(activeOrcamentosSync)
     : scope === "solicitacoes"
       ? Boolean(activeSolicitacoesSync)
-      : Boolean(activeOrcamentosSync || activeSolicitacoesSync);
+      : scope === "pessoas"
+        ? Boolean(activePessoasSync)
+        : scope === "vendas"
+          ? Boolean(activeVendasSync)
+          : Boolean(
+              activeOrcamentosSync ||
+                activeSolicitacoesSync ||
+                activePessoasSync ||
+                activeVendasSync,
+            );
 }
 
 function resetScopeState(scope: SyncScope, now: string, nextPage: number, stage: string) {
@@ -1160,8 +1672,10 @@ function resetScopeState(scope: SyncScope, now: string, nextPage: number, stage:
     current_item_id: null,
     current_page: nextPage,
     current_stage: stage,
+    details_synced: 0,
     error: null,
     items_created: 0,
+    items_skipped: 0,
     items_synced: 0,
     last_synced_at: null,
     next_page: nextPage,
@@ -1170,6 +1684,8 @@ function resetScopeState(scope: SyncScope, now: string, nextPage: number, stage:
     orcamentos_synced: 0,
     people_created: 0,
     people_synced: 0,
+    queue_pending: countPendingTasks(scope),
+    reconciled_synced: 0,
     related_created: 0,
     related_synced: 0,
     running_started_at: now,
@@ -1184,12 +1700,16 @@ function resetScopeState(scope: SyncScope, now: string, nextPage: number, stage:
 function completeScopeState(
   scope: SyncScope,
   input: {
+    detailsSynced: number;
     error: string | null;
     itemsCreated: number;
+    itemsSkipped: number;
     itemsSynced: number;
     now: string;
     peopleCreated: number;
     peopleSynced: number;
+    queuePending: number;
+    reconciledSynced: number;
     vendasCreated: number;
     vendasSynced: number;
   },
@@ -1199,8 +1719,10 @@ function completeScopeState(
     current_item_id: null,
     current_page: null,
     current_stage: "Concluído",
+    details_synced: input.detailsSynced,
     error: input.error,
     items_created: input.itemsCreated,
+    items_skipped: input.itemsSkipped,
     items_synced: input.itemsSynced,
     last_synced_at: input.now,
     next_page: getSyncStateRecord(scope).next_page,
@@ -1209,6 +1731,8 @@ function completeScopeState(
     orcamentos_synced: input.itemsSynced,
     people_created: input.peopleCreated,
     people_synced: input.peopleSynced,
+    queue_pending: input.queuePending,
+    reconciled_synced: input.reconciledSynced,
     related_created: input.peopleCreated,
     related_synced: input.peopleSynced,
     running_started_at: null,
@@ -1223,11 +1747,15 @@ function completeScopeState(
 function finishScopeWithError(
   scope: SyncScope,
   input: {
+    detailsSynced: number;
     error: unknown;
     itemsCreated: number;
+    itemsSkipped: number;
     itemsSynced: number;
     peopleCreated: number;
     peopleSynced: number;
+    queuePending: number;
+    reconciledSynced: number;
     vendasCreated: number;
     vendasSynced: number;
   },
@@ -1241,8 +1769,10 @@ function finishScopeWithError(
     current_item_id: null,
     current_page: null,
     current_stage: cancelled ? "Cancelado" : "Falha no sync",
+    details_synced: input.detailsSynced,
     error: cancelled ? null : message,
     items_created: input.itemsCreated,
+    items_skipped: input.itemsSkipped,
     items_synced: input.itemsSynced,
     next_page: getSyncStateRecord(scope).next_page,
     next_orcamento_page: getSyncStateRecord(scope).next_orcamento_page,
@@ -1250,6 +1780,8 @@ function finishScopeWithError(
     orcamentos_synced: input.itemsSynced,
     people_created: input.peopleCreated,
     people_synced: input.peopleSynced,
+    queue_pending: input.queuePending,
+    reconciled_synced: input.reconciledSynced,
     related_created: input.peopleCreated,
     related_synced: input.peopleSynced,
     running_started_at: null,
@@ -1346,13 +1878,151 @@ function parseTaskPayload(payloadJson: string) {
   }
 }
 
+function extractReferencedPeople(
+  detail: Record<string, unknown>,
+  orcamento: { cliente_pessoa_id: string | null },
+) {
+  const references = new Map<string, PessoaReference>();
+
+  if (orcamento.cliente_pessoa_id) {
+    references.set(orcamento.cliente_pessoa_id, {
+      cpf:
+        readString(detail.cpf_cliente) ??
+        readString(detail.cpf),
+      email: readString(detail.email_cliente),
+      id: orcamento.cliente_pessoa_id,
+      nome: readString(detail.nome_cliente),
+    });
+  }
+
+  for (const group of [detail.passageiros, detail.passageiro, detail.viajantes]) {
+    if (!Array.isArray(group)) {
+      continue;
+    }
+
+    for (const entry of group) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        continue;
+      }
+
+      const item = entry as IddasObject;
+      const personId = pickReferenceId(item, [
+        "id_pessoa",
+        "pessoa.id",
+        "pessoa_id",
+        "cliente.id",
+        "cliente_id",
+      ]);
+
+      if (!personId) {
+        continue;
+      }
+
+      references.set(personId, mergePessoaReference(references.get(personId), {
+        cpf:
+          readString(item.cpf) ??
+          readString(item.cpf_cnpj) ??
+          readString(item.documento),
+        email: readString(item.email),
+        id: personId,
+        nome:
+          readString(item.nome) ??
+          readString(item.nome_completo),
+      }));
+    }
+  }
+
+  return [...references.values()];
+}
+
+function mergePessoaReference(
+  current: PessoaReference | undefined,
+  next: PessoaReference,
+): PessoaReference {
+  if (!current) {
+    return next;
+  }
+
+  return {
+    cpf: current.cpf ?? next.cpf,
+    email: current.email ?? next.email,
+    id: current.id,
+    nome: current.nome ?? next.nome,
+  };
+}
+
+function shouldRefreshPessoa(reference: PessoaReference) {
+  const existing = getPessoaSnapshot.get(reference.id) as
+    | { cpf: string | null; email: string | null; id: string; nome: string | null }
+    | undefined;
+
+  if (!existing) {
+    return true;
+  }
+
+  return (
+    isDifferentComparableText(existing.nome, reference.nome) ||
+    isDifferentComparableText(existing.email, reference.email) ||
+    isDifferentComparableDocument(existing.cpf, reference.cpf)
+  );
+}
+
+function isApprovedOrcamento(orcamento: {
+  situacao_codigo: string | null;
+  situacao_nome: string | null;
+}) {
+  return (
+    normalizeComparableText(orcamento.situacao_codigo) === "a" ||
+    normalizeComparableText(orcamento.situacao_nome) === "aprovado"
+  );
+}
+
+function isDifferentComparableText(current: string | null, next: string | null) {
+  if (!next || !next.trim()) {
+    return false;
+  }
+
+  return normalizeComparableText(current) !== normalizeComparableText(next);
+}
+
+function isDifferentComparableDocument(current: string | null, next: string | null) {
+  if (!next || !next.trim()) {
+    return false;
+  }
+
+  return normalizeDocument(current) !== normalizeDocument(next);
+}
+
+function normalizeComparableText(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeDocument(value: string | null | undefined) {
+  return (value ?? "").replace(/\D+/g, "");
+}
+
 function runLocalReconciliation() {
+  const linkedByCreatedAt = reconcileSolicitacoesByCreatedAtWindow.run().changes;
   const linkedById = reconcileSolicitacoesOrcamentoIdByIdentificador.run().changes;
   const linkedByIdentificador =
     reconcileSolicitacoesIdentificadorByOrcamentoId.run().changes;
+  const conflictsByCreatedAt = flagSolicitacoesCreatedAtConflict.run().changes;
+  const mismatchesByCreatedAt = flagSolicitacoesCreatedAtMismatch.run().changes;
+  const confirmedLinked = markLinkedSolicitacoesConfirmed.run().changes;
+  const unmatched = markUnmatchedSolicitacoes.run().changes;
 
   return {
+    confirmedLinked,
+    conflictsByCreatedAt,
+    linkedByCreatedAt,
     linkedById,
     linkedByIdentificador,
+    mismatchesByCreatedAt,
+    unmatched,
   };
+}
+
+function countPendingTasks(scope: SyncScope) {
+  const row = countPendingSyncTasks.get(scope) as { total: number };
+  return row.total;
 }

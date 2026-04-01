@@ -21,6 +21,8 @@ type SolicitacaoRow = {
   id: string;
   linked_orcamento_id?: string | null;
   linked_orcamento_identificador?: string | null;
+  match_reason?: string | null;
+  match_status?: string | null;
   nome: string | null;
   origem: string | null;
   situacao_cor?: string | null;
@@ -45,6 +47,8 @@ type SolicitacaoDetail = {
   id: string;
   linked_orcamento_id: string | null;
   linked_orcamento_identificador: string | null;
+  match_reason: string | null;
+  match_status: string | null;
   nome: string | null;
   observacao: string | null;
   origem: string | null;
@@ -248,6 +252,11 @@ export function SolicitacoesList({
                             {row.situacao_nome}
                           </span>
                         ) : null}
+                        {row.match_status === "manual_review" ? (
+                          <span className="inline-flex rounded-full border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300">
+                            Revisão manual
+                          </span>
+                        ) : null}
                       </div>
                       <p className="text-[13px] text-[var(--color-ink)]">
                         {formatDateTimeToDisplay(row.data_solicitacao)}
@@ -358,6 +367,12 @@ export function SolicitacoesList({
                         {detail.situacao_nome}
                       </span>
                     ) : null}
+                    {detail.match_status === "manual_review" ? (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300">
+                        <span className="text-amber-200/80">Validação</span>
+                        <span>Manual</span>
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -440,6 +455,17 @@ export function SolicitacoesList({
                       {detail.observacao ?? "—"}
                     </p>
                   </section>
+
+                  {detail.match_status === "manual_review" ? (
+                    <section className="rounded-[24px] border border-amber-500/40 bg-amber-500/10 p-5">
+                      <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">
+                        Validação manual
+                      </h3>
+                      <p className="mt-3 text-sm leading-7 text-amber-100">
+                        {formatMatchReason(detail.match_reason)}
+                      </p>
+                    </section>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -524,6 +550,22 @@ function getReadableTextColor(background: string | null) {
   const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
 
   return luminance > 160 ? "#0f172a" : "#ffffff";
+}
+
+function formatMatchReason(reason: string | null | undefined) {
+  if (reason === "created_at_conflict") {
+    return "Mais de um orçamento foi encontrado dentro da janela de 5 segundos da criação desta solicitação.";
+  }
+
+  if (reason === "created_at_mismatch") {
+    return "O vínculo atual diverge do orçamento encontrado dentro da janela de 5 segundos da criação.";
+  }
+
+  if (reason === "created_at_5s") {
+    return "Vínculo confirmado automaticamente pela proximidade de até 5 segundos entre solicitação e orçamento.";
+  }
+
+  return "Esta solicitação precisa de confirmação manual antes de considerar o vínculo como definitivo.";
 }
 
 function formatDateTimeToDisplay(value: string | null | undefined) {
