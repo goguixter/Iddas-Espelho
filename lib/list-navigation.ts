@@ -79,16 +79,16 @@ export async function readSolicitacoesListParams(
   };
 }
 
-function parsePageParam(input?: string | null) {
+export function parsePageParam(input?: string | null) {
   const parsed = Number(input);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
 }
 
-function parseSearchParam(input?: string | null) {
+export function parseSearchParam(input?: string | null) {
   return input?.trim() ?? "";
 }
 
-function parseDateParam(input?: string | null) {
+export function parseDateParam(input?: string | null) {
   if (!input?.trim()) {
     return "";
   }

@@ -2,15 +2,6 @@ import { db } from "@/lib/db";
 import { formatCurrencyValue } from "@/lib/formatting";
 import { getSyncDashboardState } from "@/lib/sync/store";
 
-export function parsePageParam(input?: string | null) {
-  const parsed = Number(input);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
-}
-
-export function parseSearchParam(input?: string | null) {
-  return input?.trim() ?? "";
-}
-
 export function normalizeTabKey(value: string | null | undefined) {
   return (value ?? "")
     .normalize("NFD")

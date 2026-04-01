@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parsePageParam, parseSearchParam } from "@/lib/queries";
+import { parsePageParam, parseSearchParam } from "@/lib/list-navigation";
 
 export function createListRoute<T>(
   loader: (page: number, perPage: number, query: string) => Promise<T>,

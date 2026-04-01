@@ -394,20 +394,6 @@ export function normalizeSolicitacaoSummary(
   };
 }
 
-export function extractPersonIdsFromOrcamento(orcamento: OrcamentoRecord) {
-  const ids = new Set<string>();
-
-  if (orcamento.cliente_pessoa_id) {
-    ids.add(orcamento.cliente_pessoa_id);
-  }
-
-  for (const personId of JSON.parse(orcamento.passageiro_ids_json) as string[]) {
-    ids.add(personId);
-  }
-
-  return [...ids];
-}
-
 function extractPassengerPersonIds(detail: IddasObject) {
   const groups = [detail.passageiros, detail.passageiro, detail.viajantes];
 

@@ -422,7 +422,7 @@ function ensureIndex(_name: string, sql: string) {
   db.exec(sql);
 }
 
-export function refreshProjectionTables() {
+function refreshProjectionTables() {
   refreshOrcamentosProjectionByIds(readAllIds("orcamentos"));
   refreshSolicitacoesProjectionByIds(readAllIds("solicitacoes"));
   refreshVendasProjectionByIds(readAllIds("vendas"));
