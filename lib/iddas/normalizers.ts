@@ -29,12 +29,35 @@ export type OrcamentoRecord = {
 };
 
 export type PessoaRecord = {
+  bairro: string | null;
+  celular: string | null;
+  cep: string | null;
+  cidade: string | null;
+  complemento: string | null;
   cpf: string | null;
+  created_at_source: string | null;
+  detail_synced_at: string | null;
   email: string | null;
+  endereco: string | null;
+  estado: string | null;
   id: string;
+  last_seen_at: string | null;
+  nascimento: string | null;
   nome: string | null;
+  needs_detail: number;
+  numero: string | null;
+  pais_endereco: string | null;
+  passaporte: string | null;
   raw_json: string;
+  rg: string | null;
+  sexo: string | null;
+  source_hash: string | null;
+  source_updated_at: string | null;
   synced_at: string;
+  tipo_cliente: string | null;
+  tipo_fornecedor: string | null;
+  tipo_passageiro: string | null;
+  tipo_representante: string | null;
   updated_at: string;
 };
 
@@ -232,7 +255,18 @@ export function normalizeSituacao(detail: IddasObject, syncedAt: string): Situac
 }
 
 export function normalizePessoa(detail: IddasObject, syncedAt: string): PessoaRecord {
+  const rawJson = JSON.stringify(detail);
+  const sourceUpdatedAt =
+    readString(detail.updated_at) ??
+    readString(detail.data_alteracao) ??
+    syncedAt;
+
   return {
+    bairro: readString(detail.bairro),
+    celular: readString(detail.celular) ?? readString(detail.telefone),
+    cep: readString(detail.cep),
+    cidade: readString(detail.cidade),
+    complemento: readString(detail.complemento),
     id: requireString(readId(detail), "pessoa.id"),
     nome:
       readString(detail.nome) ??
@@ -243,12 +277,117 @@ export function normalizePessoa(detail: IddasObject, syncedAt: string): PessoaRe
       readString(detail.cpf) ??
       readString(detail.cpf_cnpj) ??
       readString(detail.documento),
-    raw_json: JSON.stringify(detail),
-    updated_at:
-      readString(detail.updated_at) ??
-      readString(detail.data_alteracao) ??
-      syncedAt,
+    created_at_source:
+      readString(detail.created_at) ??
+      readString(detail.data_criacao),
+    detail_synced_at: syncedAt,
+    endereco:
+      readString(detail.endereco) ??
+      readString(detail.logradouro),
+    estado: readString(detail.estado),
+    last_seen_at: syncedAt,
+    nascimento: readString(detail.nascimento),
+    needs_detail: 0,
+    numero: readString(detail.numero),
+    pais_endereco: readString(detail.pais_endereco),
+    passaporte: readString(detail.passaporte),
+    raw_json: rawJson,
+    rg: readString(detail.rg),
+    sexo: readString(detail.sexo),
+    source_hash: hashPayload(rawJson),
+    source_updated_at: sourceUpdatedAt,
     synced_at: syncedAt,
+    tipo_cliente: readString(detail.tipo_cliente),
+    tipo_fornecedor: readString(detail.tipo_fornecedor),
+    tipo_passageiro: readString(detail.tipo_passageiro),
+    tipo_representante: readString(detail.tipo_representante),
+    updated_at: sourceUpdatedAt,
+  };
+}
+
+export function normalizePessoaSummary(
+  summary: IddasObject,
+  syncedAt: string,
+): Pick<
+  PessoaRecord,
+  | "bairro"
+  | "celular"
+  | "cep"
+  | "cidade"
+  | "complemento"
+  | "cpf"
+  | "created_at_source"
+  | "detail_synced_at"
+  | "email"
+  | "endereco"
+  | "estado"
+  | "id"
+  | "last_seen_at"
+  | "nascimento"
+  | "needs_detail"
+  | "nome"
+  | "numero"
+  | "pais_endereco"
+  | "passaporte"
+  | "raw_json"
+  | "rg"
+  | "sexo"
+  | "source_hash"
+  | "source_updated_at"
+  | "synced_at"
+  | "tipo_cliente"
+  | "tipo_fornecedor"
+  | "tipo_passageiro"
+  | "tipo_representante"
+  | "updated_at"
+> {
+  const rawJson = JSON.stringify(summary);
+  const sourceUpdatedAt =
+    readString(summary.updated_at) ??
+    readString(summary.data_alteracao) ??
+    syncedAt;
+
+  return {
+    bairro: readString(summary.bairro),
+    celular: readString(summary.celular) ?? readString(summary.telefone),
+    cep: readString(summary.cep),
+    cidade: readString(summary.cidade),
+    complemento: readString(summary.complemento),
+    cpf:
+      readString(summary.cpf) ??
+      readString(summary.cpf_cnpj) ??
+      readString(summary.documento),
+    created_at_source:
+      readString(summary.created_at) ??
+      readString(summary.data_criacao),
+    detail_synced_at: null,
+    email: readString(summary.email),
+    endereco:
+      readString(summary.endereco) ??
+      readString(summary.logradouro),
+    estado: readString(summary.estado),
+    id: requireString(readId(summary), "pessoa.id"),
+    last_seen_at: syncedAt,
+    nascimento: readString(summary.nascimento),
+    needs_detail: 0,
+    nome:
+      readString(summary.nome) ??
+      readString(summary.nome_completo) ??
+      readString(summary.razao_social),
+    numero: readString(summary.numero),
+    pais_endereco: readString(summary.pais_endereco),
+    passaporte: readString(summary.passaporte),
+    raw_json: rawJson,
+    rg: readString(summary.rg),
+    sexo: readString(summary.sexo),
+    source_hash: hashPayload(rawJson),
+    source_updated_at: sourceUpdatedAt,
+    synced_at: syncedAt,
+    tipo_cliente: readString(summary.tipo_cliente),
+    tipo_fornecedor: readString(summary.tipo_fornecedor),
+    tipo_passageiro: readString(summary.tipo_passageiro),
+    tipo_representante: readString(summary.tipo_representante),
+    updated_at: sourceUpdatedAt,
   };
 }
 

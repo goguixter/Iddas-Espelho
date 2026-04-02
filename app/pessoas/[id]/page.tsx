@@ -35,7 +35,25 @@ export default async function PessoaDetailPage({
               { label: "ID", value: detail.id },
               { label: "Nome", value: detail.nome },
               { label: "E-mail", value: detail.email },
+              { label: "Celular", value: detail.celular },
               { label: "CPF", value: detail.cpf },
+              { label: "Nascimento", value: detail.nascimento },
+              { label: "Tipos", value: detail.tipos },
+              {
+                label: "Endereço",
+                value:
+                  [
+                    detail.endereco,
+                    detail.numero,
+                    detail.complemento,
+                    detail.bairro,
+                    detail.cidade,
+                    detail.estado,
+                    detail.cep,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || null,
+              },
               { label: "Atualizado em", value: detail.updated_at },
             ]}
             title="Dados da pessoa"

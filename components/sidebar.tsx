@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardList,
   Database,
+  FileText,
   LayoutDashboard,
   Users,
   WalletCards,
@@ -14,6 +15,7 @@ import {
 
 const items = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/documentos", label: "Documentos", icon: FileText },
   { href: "/solicitacoes", label: "Solicitações", icon: ClipboardList },
   { href: "/orcamentos", label: "Orçamentos", icon: Database },
   { href: "/pessoas", label: "Pessoas", icon: Users },

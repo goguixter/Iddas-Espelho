@@ -315,6 +315,15 @@ export async function getPessoasPage(page: number, perPage: number, query = "") 
     "nome",
     "email",
     "cpf",
+    "celular",
+    "cidade",
+    "estado",
+    "bairro",
+    "endereco",
+    "tipo_cliente",
+    "tipo_passageiro",
+    "tipo_fornecedor",
+    "tipo_representante",
     "raw_json",
   ]);
   const total = readFilteredCount(
@@ -328,7 +337,20 @@ export async function getPessoasPage(page: number, perPage: number, query = "") 
   const rows = db
     .prepare(
       `
-          SELECT id, nome, email, cpf, raw_json, updated_at
+          SELECT
+            id,
+            nome,
+            email,
+            cpf,
+            celular,
+            cidade,
+            estado,
+            tipo_cliente,
+            tipo_passageiro,
+            tipo_fornecedor,
+            tipo_representante,
+            raw_json,
+            updated_at
         FROM pessoas
         ${where.clause}
         ORDER BY datetime(updated_at) DESC, id DESC
@@ -336,11 +358,18 @@ export async function getPessoasPage(page: number, perPage: number, query = "") 
       `,
     )
     .all(...where.params, perPage, (page - 1) * perPage) as Array<{
+      celular: string | null;
+      cidade: string | null;
       cpf: string | null;
       email: string | null;
+      estado: string | null;
       id: string;
       nome: string | null;
       raw_json: string;
+      tipo_cliente: string | null;
+      tipo_fornecedor: string | null;
+      tipo_passageiro: string | null;
+      tipo_representante: string | null;
       updated_at: string;
     }>;
 
@@ -351,8 +380,13 @@ export async function getPessoasPage(page: number, perPage: number, query = "") 
       cpf: row.cpf,
       email: row.email,
       id: row.id,
+      localizacao:
+        [row.cidade, row.estado].filter(Boolean).join(" · ") || null,
       nome: row.nome,
-      telefone: pickObjectString(raw, ["telefone", "celular", "telefone_cliente"]),
+      telefone:
+        row.celular ??
+        pickObjectString(raw, ["telefone", "celular", "telefone_cliente"]),
+      tipos: formatPessoaTipos(row),
       updated_at: row.updated_at,
     };
   });
@@ -556,18 +590,50 @@ export async function getPessoaDetail(id: string) {
   const pessoa = db
     .prepare(
       `
-        SELECT id, nome, email, cpf, updated_at, raw_json
+        SELECT
+          id,
+          nome,
+          email,
+          cpf,
+          celular,
+          nascimento,
+          endereco,
+          numero,
+          complemento,
+          bairro,
+          cidade,
+          estado,
+          cep,
+          tipo_cliente,
+          tipo_passageiro,
+          tipo_fornecedor,
+          tipo_representante,
+          updated_at,
+          raw_json
         FROM pessoas
         WHERE id = ?
       `,
     )
     .get(id) as
     | {
+        bairro: string | null;
+        celular: string | null;
+        cep: string | null;
+        cidade: string | null;
+        complemento: string | null;
         cpf: string | null;
+        endereco: string | null;
         email: string | null;
+        estado: string | null;
         id: string;
+        nascimento: string | null;
         nome: string | null;
+        numero: string | null;
         raw_json: string;
+        tipo_cliente: string | null;
+        tipo_fornecedor: string | null;
+        tipo_passageiro: string | null;
+        tipo_representante: string | null;
         updated_at: string;
       }
     | undefined;
@@ -596,6 +662,7 @@ export async function getPessoaDetail(id: string) {
   return {
     ...pessoa,
     orcamentos,
+    tipos: formatPessoaTipos(pessoa),
     raw: parseRawJson(pessoa.raw_json),
   };
 }
@@ -844,6 +911,22 @@ function buildSolicitacaoDateWhere(date: string, prefix: "WHERE" | "AND") {
     clause: ` ${prefix} substr(sl.data_solicitacao, 1, 10) = ?`,
     params: [normalized] as unknown[],
   };
+}
+
+function formatPessoaTipos(row: {
+  tipo_cliente: string | null;
+  tipo_fornecedor: string | null;
+  tipo_passageiro: string | null;
+  tipo_representante: string | null;
+}) {
+  const labels: string[] = [];
+
+  if (row.tipo_cliente === "S") labels.push("Cliente");
+  if (row.tipo_passageiro === "S") labels.push("Passageiro");
+  if (row.tipo_fornecedor === "S") labels.push("Fornecedor");
+  if (row.tipo_representante === "S") labels.push("Representante");
+
+  return labels.join(" · ") || null;
 }
 
 function getSituacaoFlowOrder(key: string, label: string) {

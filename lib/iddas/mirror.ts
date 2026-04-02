@@ -25,6 +25,7 @@ import {
   normalizeOrcamento,
   normalizeOrcamentoSummary,
   normalizePessoa,
+  normalizePessoaSummary,
   normalizeSolicitacao,
   normalizeSolicitacaoSummary,
   normalizeSituacao,
@@ -163,12 +164,35 @@ const upsertOrcamentoDetail = db.prepare(`
     synced_at = excluded.synced_at
 `);
 
-const upsertPessoa = db.prepare(`
+const upsertPessoaSummary = db.prepare(`
   INSERT INTO pessoas (
     id,
     nome,
     email,
     cpf,
+    celular,
+    nascimento,
+    sexo,
+    rg,
+    passaporte,
+    tipo_cliente,
+    tipo_passageiro,
+    tipo_fornecedor,
+    tipo_representante,
+    endereco,
+    numero,
+    complemento,
+    bairro,
+    cidade,
+    estado,
+    cep,
+    pais_endereco,
+    created_at_source,
+    source_updated_at,
+    source_hash,
+    last_seen_at,
+    detail_synced_at,
+    needs_detail,
     raw_json,
     updated_at,
     synced_at
@@ -178,6 +202,128 @@ const upsertPessoa = db.prepare(`
     @nome,
     @email,
     @cpf,
+    @celular,
+    @nascimento,
+    @sexo,
+    @rg,
+    @passaporte,
+    @tipo_cliente,
+    @tipo_passageiro,
+    @tipo_fornecedor,
+    @tipo_representante,
+    @endereco,
+    @numero,
+    @complemento,
+    @bairro,
+    @cidade,
+    @estado,
+    @cep,
+    @pais_endereco,
+    @created_at_source,
+    @source_updated_at,
+    @source_hash,
+    @last_seen_at,
+    NULL,
+    @needs_detail,
+    @raw_json,
+    @updated_at,
+    @synced_at
+  )
+  ON CONFLICT(id) DO UPDATE SET
+    nome = COALESCE(excluded.nome, pessoas.nome),
+    email = COALESCE(excluded.email, pessoas.email),
+    cpf = COALESCE(excluded.cpf, pessoas.cpf),
+    celular = COALESCE(excluded.celular, pessoas.celular),
+    nascimento = COALESCE(excluded.nascimento, pessoas.nascimento),
+    sexo = COALESCE(excluded.sexo, pessoas.sexo),
+    rg = COALESCE(excluded.rg, pessoas.rg),
+    passaporte = COALESCE(excluded.passaporte, pessoas.passaporte),
+    tipo_cliente = COALESCE(excluded.tipo_cliente, pessoas.tipo_cliente),
+    tipo_passageiro = COALESCE(excluded.tipo_passageiro, pessoas.tipo_passageiro),
+    tipo_fornecedor = COALESCE(excluded.tipo_fornecedor, pessoas.tipo_fornecedor),
+    tipo_representante = COALESCE(excluded.tipo_representante, pessoas.tipo_representante),
+    endereco = COALESCE(excluded.endereco, pessoas.endereco),
+    numero = COALESCE(excluded.numero, pessoas.numero),
+    complemento = COALESCE(excluded.complemento, pessoas.complemento),
+    bairro = COALESCE(excluded.bairro, pessoas.bairro),
+    cidade = COALESCE(excluded.cidade, pessoas.cidade),
+    estado = COALESCE(excluded.estado, pessoas.estado),
+    cep = COALESCE(excluded.cep, pessoas.cep),
+    pais_endereco = COALESCE(excluded.pais_endereco, pessoas.pais_endereco),
+    created_at_source = COALESCE(excluded.created_at_source, pessoas.created_at_source),
+    source_updated_at = excluded.source_updated_at,
+    source_hash = excluded.source_hash,
+    last_seen_at = excluded.last_seen_at,
+    needs_detail = excluded.needs_detail,
+    raw_json = CASE
+      WHEN pessoas.detail_synced_at IS NULL THEN excluded.raw_json
+      ELSE pessoas.raw_json
+    END,
+    updated_at = excluded.updated_at,
+    synced_at = excluded.synced_at
+`);
+
+const upsertPessoa = db.prepare(`
+  INSERT INTO pessoas (
+    id,
+    nome,
+    email,
+    cpf,
+    celular,
+    nascimento,
+    sexo,
+    rg,
+    passaporte,
+    tipo_cliente,
+    tipo_passageiro,
+    tipo_fornecedor,
+    tipo_representante,
+    endereco,
+    numero,
+    complemento,
+    bairro,
+    cidade,
+    estado,
+    cep,
+    pais_endereco,
+    created_at_source,
+    source_updated_at,
+    source_hash,
+    last_seen_at,
+    detail_synced_at,
+    needs_detail,
+    raw_json,
+    updated_at,
+    synced_at
+  )
+  VALUES (
+    @id,
+    @nome,
+    @email,
+    @cpf,
+    @celular,
+    @nascimento,
+    @sexo,
+    @rg,
+    @passaporte,
+    @tipo_cliente,
+    @tipo_passageiro,
+    @tipo_fornecedor,
+    @tipo_representante,
+    @endereco,
+    @numero,
+    @complemento,
+    @bairro,
+    @cidade,
+    @estado,
+    @cep,
+    @pais_endereco,
+    @created_at_source,
+    @source_updated_at,
+    @source_hash,
+    @last_seen_at,
+    @detail_synced_at,
+    0,
     @raw_json,
     @updated_at,
     @synced_at
@@ -186,6 +332,29 @@ const upsertPessoa = db.prepare(`
     nome = excluded.nome,
     email = excluded.email,
     cpf = excluded.cpf,
+    celular = excluded.celular,
+    nascimento = excluded.nascimento,
+    sexo = excluded.sexo,
+    rg = excluded.rg,
+    passaporte = excluded.passaporte,
+    tipo_cliente = excluded.tipo_cliente,
+    tipo_passageiro = excluded.tipo_passageiro,
+    tipo_fornecedor = excluded.tipo_fornecedor,
+    tipo_representante = excluded.tipo_representante,
+    endereco = excluded.endereco,
+    numero = excluded.numero,
+    complemento = excluded.complemento,
+    bairro = excluded.bairro,
+    cidade = excluded.cidade,
+    estado = excluded.estado,
+    cep = excluded.cep,
+    pais_endereco = excluded.pais_endereco,
+    created_at_source = COALESCE(pessoas.created_at_source, excluded.created_at_source),
+    source_updated_at = COALESCE(pessoas.source_updated_at, excluded.source_updated_at),
+    source_hash = COALESCE(pessoas.source_hash, excluded.source_hash),
+    last_seen_at = COALESCE(pessoas.last_seen_at, excluded.last_seen_at),
+    detail_synced_at = excluded.detail_synced_at,
+    needs_detail = 0,
     raw_json = excluded.raw_json,
     updated_at = excluded.updated_at,
     synced_at = excluded.synced_at
@@ -432,10 +601,16 @@ const upsertSolicitacaoDetail = db.prepare(`
 const hasPessoa = db.prepare(`SELECT 1 FROM pessoas WHERE id = ? LIMIT 1`);
 const hasVenda = db.prepare(`SELECT 1 FROM vendas WHERE id = ? LIMIT 1`);
 const getPessoaSnapshot = db.prepare(`
-  SELECT id, nome, email, cpf
+  SELECT id, nome, email, cpf, celular, nascimento, tipo_cliente, tipo_passageiro, tipo_fornecedor, tipo_representante
   FROM pessoas
   WHERE id = ?
   LIMIT 1
+`);
+
+const getPessoaMirrorState = db.prepare(`
+  SELECT id, source_hash, source_updated_at, detail_synced_at
+  FROM pessoas
+  WHERE id = ?
 `);
 
 const getOrcamentoMirrorState = db.prepare(`
@@ -460,6 +635,13 @@ const listPendingOrcamentoIds = db.prepare(`
 const listPendingSolicitacaoIds = db.prepare(`
   SELECT id
   FROM solicitacoes
+  WHERE needs_detail = 1
+  ORDER BY COALESCE(last_seen_at, synced_at) DESC, id ASC
+`);
+
+const listPendingPessoaIds = db.prepare(`
+  SELECT id
+  FROM pessoas
   WHERE needs_detail = 1
   ORDER BY COALESCE(last_seen_at, synced_at) DESC, id ASC
 `);
@@ -545,6 +727,11 @@ const resetOrcamentoNeedsDetail = db.prepare(`
 
 const resetSolicitacaoNeedsDetail = db.prepare(`
   UPDATE solicitacoes
+  SET needs_detail = 0
+`);
+
+const resetPessoaNeedsDetail = db.prepare(`
+  UPDATE pessoas
   SET needs_detail = 0
 `);
 
@@ -1299,22 +1486,160 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
 async function runPessoasSync(): Promise<SyncResult> {
   const scope: SyncScope = "pessoas";
   const now = new Date().toISOString();
+  const maxPages = env.IDDAS_SYNC_MAX_PAGES;
+  const perPage = env.IDDAS_SYNC_PESSOAS_PER_PAGE;
   const fetchedPersonIds = new Set<string>();
   let itemsCreated = 0;
+  let itemsDetailed = 0;
+  let itemsCollected = 0;
   let itemsSynced = 0;
   let itemsSkipped = 0;
   const touchedPersonIds = new Set<string>();
 
   try {
-    resetScopeState(scope, now, 1, "Processando fila de pessoas");
+    const startPage = Math.max(1, getSyncStateRecord(scope).next_page || 1);
+    resetScopeState(scope, now, startPage, "Coletando pessoas");
+
+    let currentPage = startPage;
+    let pagesVisited = 0;
+    let reachedEnd = false;
+
+    while (pagesVisited < maxPages) {
+      throwIfCancelRequested(scope);
+      updateSyncStateRecord(scope, {
+        current_page: currentPage,
+        current_stage: "Coletando pessoas",
+      });
+
+      const items = await fetchIddasList("pessoa", currentPage, perPage);
+      pagesVisited += 1;
+
+      logSync("info", "sync.pessoas.page", {
+        page: currentPage,
+        returned: items.length,
+      });
+
+      if (items.length === 0) {
+        reachedEnd = true;
+        break;
+      }
+
+      for (const item of items) {
+        throwIfCancelRequested(scope);
+        const normalized = normalizePessoaSummary(item, now);
+        const existing = getMirrorState(getPessoaMirrorState, normalized.id);
+        const needsDetail = shouldRefreshDetail(
+          existing,
+          normalized.source_hash ?? "",
+          normalized.source_updated_at,
+        );
+        const alreadyExists = hasRow(hasPessoa, normalized.id);
+
+        upsertPessoaSummary.run({
+          ...normalized,
+          needs_detail: needsDetail ? 1 : 0,
+        });
+
+        touchedPersonIds.add(normalized.id);
+        itemsCollected += 1;
+
+        if (!alreadyExists) {
+          itemsCreated += 1;
+        }
+
+        if (needsDetail) {
+          fetchedPersonIds.delete(normalized.id);
+        } else {
+          itemsSkipped += 1;
+        }
+      }
+
+      updateSyncStateRecord(scope, {
+        current_page: currentPage,
+        items_created: itemsCreated,
+        items_skipped: itemsSkipped,
+        items_synced: itemsCollected,
+        next_page: currentPage + 1,
+      });
+
+      if (items.length < perPage) {
+        reachedEnd = true;
+        break;
+      }
+
+      currentPage += 1;
+    }
+
     updateSyncStateRecord(scope, {
-      current_page: null,
-      next_page: 1,
+      current_stage: "Detalhando pessoas alteradas",
+      next_page: reachedEnd ? 1 : currentPage + 1,
     });
+
+    const pendingPessoaIds = readPendingIds(listPendingPessoaIds);
+
+    for (const personId of pendingPessoaIds) {
+      throwIfCancelRequested(scope);
+
+      if (fetchedPersonIds.has(personId)) {
+        continue;
+      }
+
+      updateSyncStateRecord(scope, {
+        current_item_id: personId,
+        current_stage: "Atualizando pessoa detalhada",
+      });
+
+      try {
+        const pessoa = await fetchIddasDetail("pessoa", personId);
+        const pessoaAlreadyExists = hasRow(hasPessoa, personId);
+        upsertPessoa.run(normalizePessoa(pessoa, now));
+        fetchedPersonIds.add(personId);
+        touchedPersonIds.add(personId);
+        itemsDetailed += 1;
+        itemsSynced += 1;
+
+        if (!pessoaAlreadyExists) {
+          itemsCreated += 1;
+        }
+
+        logSync("info", "sync.pessoa.detail-processed", {
+          id: personId,
+          new_record: pessoaAlreadyExists ? 0 : 1,
+        });
+
+        updateSyncStateRecord(scope, {
+          details_synced: itemsDetailed,
+          people_created: itemsCreated,
+          people_synced: itemsSynced,
+          related_created: itemsCreated,
+          related_synced: itemsSynced,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Falha ao buscar pessoa.";
+
+        if (message.includes("IDDAS respondeu 404")) {
+          fetchedPersonIds.add(personId);
+          itemsSkipped += 1;
+          logSync("warn", "sync.pessoa.detail-not-found", { id: personId });
+          updateSyncStateRecord(scope, {
+            items_skipped: itemsSkipped,
+          });
+          continue;
+        }
+
+        if (message.includes("IDDAS respondeu 429")) {
+          logSync("warn", "sync.pessoa.detail-rate-limited", { id: personId });
+          continue;
+        }
+
+        throw error;
+      }
+    }
 
     const pendingPessoaTasks = readPendingTasks(scope, "pessoa");
     updateSyncStateRecord(scope, {
       queue_pending: pendingPessoaTasks.length,
+      current_page: null,
     });
 
     logSync("info", "sync.pessoas.pending-tasks", {
@@ -1349,6 +1674,7 @@ async function runPessoasSync(): Promise<SyncResult> {
         upsertPessoa.run(normalizePessoa(pessoa, now));
         fetchedPersonIds.add(personId);
         touchedPersonIds.add(personId);
+        itemsDetailed += 1;
         itemsSynced += 1;
         deleteSyncTask.run(task.id);
 
@@ -1358,6 +1684,7 @@ async function runPessoasSync(): Promise<SyncResult> {
         });
 
         updateSyncStateRecord(scope, {
+          details_synced: itemsDetailed,
           items_created: itemsCreated,
           items_synced: itemsSynced,
           queue_pending: countPendingTasks(scope),
@@ -1401,13 +1728,13 @@ async function runPessoasSync(): Promise<SyncResult> {
       current_item_id: null,
       current_page: null,
       current_stage: "Concluído",
-      details_synced: itemsSynced,
+      details_synced: itemsDetailed,
       error: null,
       items_created: itemsCreated,
       items_skipped: itemsSkipped,
-      items_synced: itemsSynced,
+      items_synced: itemsCollected,
       last_synced_at: now,
-      next_page: 1,
+      next_page: reachedEnd ? 1 : currentPage + 1,
       people_created: itemsCreated,
       people_synced: itemsSynced,
       queue_pending: countPendingTasks(scope),
@@ -1605,7 +1932,7 @@ async function runVendasSync(): Promise<SyncResult> {
       items_created: itemsCreated,
       items_skipped: itemsSkipped,
       items_synced: itemsSynced,
-      next_page: 1,
+      next_page: getSyncStateRecord(scope).next_page,
       queue_pending: countPendingTasks(scope),
       running_started_at: null,
       secondary_created: itemsCreated,
@@ -1642,6 +1969,10 @@ export function resetIddasSyncScope(scope: SyncScope) {
 
   if (scope === "solicitacoes") {
     resetSolicitacaoNeedsDetail.run();
+  }
+
+  if (scope === "pessoas") {
+    resetPessoaNeedsDetail.run();
   }
 
   deleteSyncTasksByScope.run(scope);
@@ -1953,7 +2284,18 @@ function mergePessoaReference(
 
 function shouldRefreshPessoa(reference: PessoaReference) {
   const existing = getPessoaSnapshot.get(reference.id) as
-    | { cpf: string | null; email: string | null; id: string; nome: string | null }
+    | {
+        celular: string | null;
+        cpf: string | null;
+        email: string | null;
+        id: string;
+        nascimento: string | null;
+        nome: string | null;
+        tipo_cliente: string | null;
+        tipo_fornecedor: string | null;
+        tipo_passageiro: string | null;
+        tipo_representante: string | null;
+      }
     | undefined;
 
   if (!existing) {

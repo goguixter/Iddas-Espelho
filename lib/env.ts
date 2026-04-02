@@ -7,6 +7,7 @@ const envSchema = z.object({
   IDDAS_SYNC_LOOKBACK_DAYS: z.coerce.number().int().positive().default(30),
   IDDAS_SYNC_MAX_PAGES: z.coerce.number().int().positive().default(50),
   IDDAS_SYNC_ORCAMENTOS_PER_PAGE: z.coerce.number().int().positive().max(100).default(100),
+  IDDAS_SYNC_PESSOAS_PER_PAGE: z.coerce.number().int().positive().max(100).default(100),
   IDDAS_SYNC_VENDAS_PER_PAGE: z.coerce.number().int().positive().max(100).default(100),
 });
 
@@ -17,5 +18,6 @@ export const env = envSchema.parse({
   IDDAS_SYNC_LOOKBACK_DAYS: process.env.IDDAS_SYNC_LOOKBACK_DAYS,
   IDDAS_SYNC_MAX_PAGES: process.env.IDDAS_SYNC_MAX_PAGES,
   IDDAS_SYNC_ORCAMENTOS_PER_PAGE: process.env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE,
+  IDDAS_SYNC_PESSOAS_PER_PAGE: process.env.IDDAS_SYNC_PESSOAS_PER_PAGE,
   IDDAS_SYNC_VENDAS_PER_PAGE: process.env.IDDAS_SYNC_VENDAS_PER_PAGE,
 });

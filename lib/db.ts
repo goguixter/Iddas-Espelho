@@ -69,6 +69,29 @@ function runMigrations() {
       nome TEXT,
       email TEXT,
       cpf TEXT,
+      celular TEXT,
+      nascimento TEXT,
+      sexo TEXT,
+      rg TEXT,
+      passaporte TEXT,
+      tipo_cliente TEXT,
+      tipo_passageiro TEXT,
+      tipo_fornecedor TEXT,
+      tipo_representante TEXT,
+      endereco TEXT,
+      numero TEXT,
+      complemento TEXT,
+      bairro TEXT,
+      cidade TEXT,
+      estado TEXT,
+      cep TEXT,
+      pais_endereco TEXT,
+      created_at_source TEXT,
+      source_updated_at TEXT,
+      source_hash TEXT,
+      last_seen_at TEXT,
+      detail_synced_at TEXT,
+      needs_detail INTEGER NOT NULL DEFAULT 0,
       raw_json TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       synced_at TEXT NOT NULL
@@ -226,6 +249,19 @@ function runMigrations() {
       solicitacao_nome TEXT,
       venda_raw_json TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS document_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_key TEXT NOT NULL,
+      template_version INTEGER NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      html_snapshot TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   ensureColumn("sync_state", "status", "TEXT NOT NULL DEFAULT 'idle'");
@@ -258,6 +294,29 @@ function runMigrations() {
   ensureColumn("orcamentos", "last_seen_at", "TEXT");
   ensureColumn("orcamentos", "detail_synced_at", "TEXT");
   ensureColumn("orcamentos", "needs_detail", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("pessoas", "celular", "TEXT");
+  ensureColumn("pessoas", "nascimento", "TEXT");
+  ensureColumn("pessoas", "sexo", "TEXT");
+  ensureColumn("pessoas", "rg", "TEXT");
+  ensureColumn("pessoas", "passaporte", "TEXT");
+  ensureColumn("pessoas", "tipo_cliente", "TEXT");
+  ensureColumn("pessoas", "tipo_passageiro", "TEXT");
+  ensureColumn("pessoas", "tipo_fornecedor", "TEXT");
+  ensureColumn("pessoas", "tipo_representante", "TEXT");
+  ensureColumn("pessoas", "endereco", "TEXT");
+  ensureColumn("pessoas", "numero", "TEXT");
+  ensureColumn("pessoas", "complemento", "TEXT");
+  ensureColumn("pessoas", "bairro", "TEXT");
+  ensureColumn("pessoas", "cidade", "TEXT");
+  ensureColumn("pessoas", "estado", "TEXT");
+  ensureColumn("pessoas", "cep", "TEXT");
+  ensureColumn("pessoas", "pais_endereco", "TEXT");
+  ensureColumn("pessoas", "created_at_source", "TEXT");
+  ensureColumn("pessoas", "source_updated_at", "TEXT");
+  ensureColumn("pessoas", "source_hash", "TEXT");
+  ensureColumn("pessoas", "last_seen_at", "TEXT");
+  ensureColumn("pessoas", "detail_synced_at", "TEXT");
+  ensureColumn("pessoas", "needs_detail", "INTEGER NOT NULL DEFAULT 0");
   ensureIndex(
     "idx_orcamentos_situacao_codigo",
     "CREATE INDEX IF NOT EXISTS idx_orcamentos_situacao_codigo ON orcamentos (situacao_codigo)",
@@ -273,6 +332,18 @@ function runMigrations() {
   ensureIndex(
     "idx_situacoes_codigo",
     "CREATE INDEX IF NOT EXISTS idx_situacoes_codigo ON situacoes (codigo)",
+  );
+  ensureIndex(
+    "idx_pessoas_needs_detail",
+    "CREATE INDEX IF NOT EXISTS idx_pessoas_needs_detail ON pessoas (needs_detail, last_seen_at)",
+  );
+  ensureIndex(
+    "idx_pessoas_source_hash",
+    "CREATE INDEX IF NOT EXISTS idx_pessoas_source_hash ON pessoas (source_hash)",
+  );
+  ensureIndex(
+    "idx_pessoas_updated_at",
+    "CREATE INDEX IF NOT EXISTS idx_pessoas_updated_at ON pessoas (updated_at, id)",
   );
   ensureColumn("solicitacoes", "linked_orcamento_id", "TEXT");
   ensureColumn("solicitacoes", "linked_orcamento_identificador", "TEXT");
@@ -340,6 +411,14 @@ function runMigrations() {
   ensureIndex(
     "idx_vendas_projection_orcamento_id",
     "CREATE INDEX IF NOT EXISTS idx_vendas_projection_orcamento_id ON vendas_projection (orcamento_id)",
+  );
+  ensureIndex(
+    "idx_document_records_entity",
+    "CREATE INDEX IF NOT EXISTS idx_document_records_entity ON document_records (entity_type, entity_id, created_at DESC)",
+  );
+  ensureIndex(
+    "idx_document_records_template",
+    "CREATE INDEX IF NOT EXISTS idx_document_records_template ON document_records (template_key, created_at DESC)",
   );
 
   db.exec(`
