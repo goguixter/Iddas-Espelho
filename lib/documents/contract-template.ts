@@ -57,6 +57,8 @@ const CONTRATADA = {
     "Rua Alfredo Marotzki, 1206, bairro Canudos, CEP: 93540-200, Novo Hamburgo/RS.",
 };
 
+const ASSINATURA_CIDADE = "Novo Hamburgo";
+
 export function buildContractDocument(source: OrcamentoDocumentSource, input: ContractDocumentFormInput) {
   const payload = buildPayloadFromOrcamento(source, input);
   const title = `Contrato - ${payload.contratante.nome}`;
@@ -96,6 +98,7 @@ function buildPayload(
   input: ContractDocumentFormInput,
 ): ContractDocumentPayload {
   const raw = source.raw;
+  const assinatura = buildSignaturePayload();
   const passageiroRows = extractPassengers(raw, source);
   const documentNumber =
     source.clienteCpf ??
@@ -133,11 +136,7 @@ function buildPayload(
     ) ?? "Não informado";
 
   return {
-    assinatura: {
-      cidade: input.cidadeAssinatura.trim(),
-      dataExtenso: formatDateLong(input.dataAssinatura),
-      dataIso: input.dataAssinatura.trim(),
-    },
+    assinatura,
     contratada: CONTRATADA,
     contratante: {
       bairro: input.bairro.trim(),
@@ -181,6 +180,7 @@ function buildPayloadFromManual(
     passageiros?: PessoaDocumentSource[];
   },
 ): ContractDocumentPayload {
+  const assinatura = buildSignaturePayload();
   const contratante = sources?.contratante ?? null;
   const passageiros =
     sources?.passageiros?.map((person) => ({
@@ -208,11 +208,7 @@ function buildPayloadFromManual(
     inferDocumentLabel(documentNumber);
 
   return {
-    assinatura: {
-      cidade: input.cidadeAssinatura.trim(),
-      dataExtenso: formatDateLong(input.dataAssinatura),
-      dataIso: input.dataAssinatura.trim(),
-    },
+    assinatura,
     contratada: CONTRATADA,
     contratante: {
       bairro: input.bairro.trim(),
@@ -263,6 +259,22 @@ function buildPayloadFromManual(
         firstNonEmpty(input.servicoContratado) ??
         "Intermediação na compra de passagens aéreas",
     },
+  };
+}
+
+function buildSignaturePayload() {
+  const now = new Date();
+  const dateIso = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  }).format(now);
+
+  return {
+    cidade: ASSINATURA_CIDADE,
+    dataExtenso: formatDateLong(dateIso),
+    dataIso: dateIso,
   };
 }
 

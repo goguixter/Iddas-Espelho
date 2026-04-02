@@ -15,7 +15,9 @@ import {
   MapPinned,
   Plane,
   Plus,
+  RefreshCcw,
   ReceiptText,
+  Search,
   UserRound,
   Users,
   X,
@@ -31,9 +33,7 @@ type FormState = {
   cancelamentosReembolsos: string;
   cep: string;
   cidade: string;
-  cidadeAssinatura: string;
   condicoesTarifarias: string;
-  dataAssinatura: string;
   estado: string;
   fornecedor: string;
   localizadorReserva: string;
@@ -74,7 +74,13 @@ export function DocumentGenerator({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingSource, setLoadingSource] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
   const [selectedPassengerId, setSelectedPassengerId] = useState("");
+  const [orcamentoSearch, setOrcamentoSearch] = useState("");
+  const [orcamentoSearchResults, setOrcamentoSearchResults] = useState<
+    RecentOrcamentoDocumentOption[]
+  >([]);
   const [selectedPassengerPeople, setSelectedPassengerPeople] = useState<PessoaDocumentSource[]>([]);
   const [manualPassengers, setManualPassengers] = useState<ManualPassenger[]>([]);
   const [form, setForm] = useState<FormState>({
@@ -82,9 +88,7 @@ export function DocumentGenerator({
     cancelamentosReembolsos: "",
     cep: "",
     cidade: "",
-    cidadeAssinatura: "Novo Hamburgo",
     condicoesTarifarias: "",
-    dataAssinatura: new Date().toISOString().slice(0, 10),
     estado: "RS",
     fornecedor: "",
     localizadorReserva: "",
@@ -100,9 +104,45 @@ export function DocumentGenerator({
     servicoContratado: "Intermediação na compra de passagens aéreas",
   });
 
-  const datalistOrcamentos = useMemo(() => "orcamentos-documentos", []);
   const datalistContratante = useMemo(() => "pessoas-contratante-documentos", []);
   const datalistPassageiros = useMemo(() => "pessoas-passageiros-documentos", []);
+
+  useEffect(() => {
+    if (form.mode !== "orcamento") {
+      return;
+    }
+
+    const query = orcamentoSearch.trim();
+
+    if (!query) {
+      setOrcamentoSearchResults([]);
+      return;
+    }
+
+    let active = true;
+    const timeoutId = window.setTimeout(() => {
+      fetch(`/api/documentos/orcamentos?q=${encodeURIComponent(query)}`)
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Não foi possível buscar orçamentos.");
+          }
+          return response.json();
+        })
+        .then((results: RecentOrcamentoDocumentOption[]) => {
+          if (!active) return;
+          setOrcamentoSearchResults(results);
+        })
+        .catch(() => {
+          if (!active) return;
+          setOrcamentoSearchResults([]);
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [form.mode, orcamentoSearch]);
 
   useEffect(() => {
     if (form.mode !== "orcamento" || !form.orcamentoId.trim()) {
@@ -191,6 +231,65 @@ export function DocumentGenerator({
       active = false;
     };
   }, [form.mode, form.pessoaContratanteId]);
+
+  useEffect(() => {
+    if (form.mode !== "orcamento") {
+      setPreviewHtml("");
+      setLoadingPreview(false);
+      return;
+    }
+
+    if (
+      !form.orcamentoId.trim() ||
+      !form.logradouro.trim() ||
+      !form.numero.trim() ||
+      !form.bairro.trim() ||
+      !form.cep.trim() ||
+      !form.cidade.trim() ||
+      !form.estado.trim()
+    ) {
+      setPreviewHtml("");
+      return;
+    }
+
+    let active = true;
+    setLoadingPreview(true);
+
+    const timeoutId = window.setTimeout(() => {
+      fetch("/api/documentos/preview", {
+        body: JSON.stringify({
+          ...form,
+          manualPassageiros: manualPassengers.filter((item) => item.nome.trim()),
+          passageirosPessoaIds: selectedPassengerPeople.map((item) => item.id),
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Não foi possível gerar a prévia.");
+          }
+          return response.json();
+        })
+        .then((payload: { html: string }) => {
+          if (!active) return;
+          setPreviewHtml(payload.html);
+        })
+        .catch(() => {
+          if (!active) return;
+          setPreviewHtml("");
+        })
+        .finally(() => {
+          if (!active) return;
+          setLoadingPreview(false);
+        });
+    }, 300);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [form, manualPassengers, selectedPassengerPeople]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -289,7 +388,13 @@ export function DocumentGenerator({
       </div>
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-5">
-        <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
+        <div
+          className={`grid gap-4 ${
+            form.mode === "orcamento"
+              ? "xl:grid-cols-[0.8fr_1.2fr]"
+              : "xl:grid-cols-[1.15fr_1fr]"
+          }`}
+        >
           <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
             <div className="flex items-center gap-2 text-[var(--color-ink)]">
               {form.mode === "orcamento" ? (
@@ -304,17 +409,43 @@ export function DocumentGenerator({
 
             {form.mode === "orcamento" ? (
               <div className="mt-4 space-y-4">
-                <InputWithDatalist
-                  datalistId={datalistOrcamentos}
-                  label="ID do orçamento"
-                  value={form.orcamentoId}
-                  onChange={(value) => updateField("orcamentoId", value)}
-                  options={recentOrcamentos.map((option) => ({
-                    label: `${option.identificador ?? "sem-tag"} • ${option.cliente_nome ?? "sem cliente"}`,
-                    value: option.id,
-                  }))}
-                  placeholder="Ex.: 1115670"
+                <SearchField
+                  label="Buscar orçamento por nome"
+                  value={orcamentoSearch}
+                  onChange={setOrcamentoSearch}
+                  placeholder="Digite o nome do cliente, tag ou ID"
                 />
+
+                {orcamentoSearchResults.length > 0 ? (
+                  <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2">
+                    <div className="space-y-2">
+                      {orcamentoSearchResults.map((option) => (
+                        <button
+                          key={`orcamento-search-${option.id}`}
+                          type="button"
+                          onClick={() => {
+                            updateField("orcamentoId", option.id);
+                            setOrcamentoSearch(option.cliente_nome ?? option.identificador ?? option.id);
+                            setOrcamentoSearchResults([]);
+                          }}
+                          className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-transparent bg-[var(--color-panel)] px-3 py-3 text-left transition hover:border-[var(--color-accent)]"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-[var(--color-ink)]">
+                              {option.cliente_nome ?? "Sem cliente"}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--color-muted)]">
+                              {option.identificador ?? "sem-tag"}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-[var(--color-line)] px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-[var(--color-faint)]">
+                            {option.situacao_nome ?? "Sem situação"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="flex flex-wrap gap-2">
                   {recentOrcamentos.map((option) => (
@@ -324,7 +455,7 @@ export function DocumentGenerator({
                       onClick={() => updateField("orcamentoId", option.id)}
                       className="cursor-pointer rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-ink)]"
                     >
-                      {option.identificador ?? option.id}
+                      {option.cliente_nome ?? option.identificador ?? "Sem cliente"}
                     </button>
                   ))}
                 </div>
@@ -350,25 +481,60 @@ export function DocumentGenerator({
             )}
           </section>
 
-          <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-            <div className="flex items-center gap-2 text-[var(--color-ink)]">
-              <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
-              <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                Endereço do contratante
-              </h3>
-            </div>
+          {form.mode === "orcamento" ? (
+            <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
+              <div className="flex items-center justify-between gap-3 text-[var(--color-ink)]">
+                <div className="flex items-center gap-2">
+                  <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
+                    Preview automático
+                  </h3>
+                </div>
+                {loadingPreview ? (
+                  <span className="inline-flex items-center gap-2 text-xs text-[var(--color-muted)]">
+                    <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
+                    Atualizando
+                  </span>
+                ) : null}
+              </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <InputField label="Logradouro" value={form.logradouro} onChange={(value) => updateField("logradouro", value)} />
-              <InputField label="Número" value={form.numero} onChange={(value) => updateField("numero", value)} />
-              <InputField label="Bairro" value={form.bairro} onChange={(value) => updateField("bairro", value)} />
-              <InputField label="CEP" value={form.cep} onChange={(value) => updateField("cep", value)} />
-              <InputField label="Cidade" value={form.cidade} onChange={(value) => updateField("cidade", value)} />
-              <InputField label="Estado" value={form.estado} onChange={(value) => updateField("estado", value.toUpperCase())} maxLength={2} />
-            </div>
-          </section>
+              <div className="mt-4 overflow-hidden rounded-[22px] border border-[var(--color-line)] bg-[var(--color-surface)]">
+                {previewHtml ? (
+                  <iframe
+                    title="Prévia do contrato"
+                    srcDoc={previewHtml}
+                    className="h-[760px] w-full bg-white"
+                    style={{ zoom: 0.8 }}
+                  />
+                ) : (
+                  <div className="flex h-[760px] items-center justify-center px-6 text-center text-sm text-[var(--color-muted)]">
+                    Selecione um orçamento para gerar a prévia automática do contrato.
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
+              <div className="flex items-center gap-2 text-[var(--color-ink)]">
+                <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
+                <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
+                  Endereço do contratante
+                </h3>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <InputField label="Logradouro" value={form.logradouro} onChange={(value) => updateField("logradouro", value)} />
+                <InputField label="Número" value={form.numero} onChange={(value) => updateField("numero", value)} />
+                <InputField label="Bairro" value={form.bairro} onChange={(value) => updateField("bairro", value)} />
+                <InputField label="CEP" value={form.cep} onChange={(value) => updateField("cep", value)} />
+                <InputField label="Cidade" value={form.cidade} onChange={(value) => updateField("cidade", value)} />
+                <InputField label="Estado" value={form.estado} onChange={(value) => updateField("estado", value.toUpperCase())} maxLength={2} />
+              </div>
+            </section>
+          )}
         </div>
 
+        {form.mode === "manual" ? (
         <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
           <div className="flex items-center gap-2 text-[var(--color-ink)]">
             <Users className="h-4 w-4 text-[var(--color-accent)]" />
@@ -462,7 +628,9 @@ export function DocumentGenerator({
             </div>
           </div>
         </section>
+        ) : null}
 
+        {form.mode === "manual" ? (
         <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
           <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
             <div className="flex items-center gap-2 text-[var(--color-ink)]">
@@ -486,19 +654,18 @@ export function DocumentGenerator({
             <div className="flex items-center gap-2 text-[var(--color-ink)]">
               <FileText className="h-4 w-4 text-[var(--color-accent)]" />
               <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                Emissão e assinatura
+                Geração do documento
               </h3>
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <InputField label="Cidade da assinatura" value={form.cidadeAssinatura} onChange={(value) => updateField("cidadeAssinatura", value)} />
-              <DateField label="Data da assinatura" value={form.dataAssinatura} onChange={(value) => updateField("dataAssinatura", value)} />
             </div>
 
             <div className="mt-4 rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
               {loadingSource
                 ? "Carregando dados automáticos..."
-                : "O documento será salvo com snapshot HTML estático e poderá ser impresso em PDF depois."}
+                : "A cidade será sempre Novo Hamburgo e a data será preenchida automaticamente com o dia da geração do contrato."}
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
+              O documento será salvo com snapshot HTML estático e poderá ser impresso em PDF depois.
             </div>
 
             {error ? (
@@ -508,6 +675,21 @@ export function DocumentGenerator({
             ) : null}
           </section>
         </div>
+        ) : (
+          <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
+            <div className="rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
+              {loadingSource
+                ? "Carregando dados automáticos..."
+                : "A prévia usa as variáveis herdadas do orçamento. Cidade e data são aplicadas automaticamente no documento final."}
+            </div>
+
+            {error ? (
+              <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                {error}
+              </div>
+            ) : null}
+          </section>
+        )}
 
         <button
           type="submit"
@@ -603,6 +785,36 @@ function InputWithDatalist({
   );
 }
 
+function SearchField({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs uppercase tracking-[0.16em] text-[var(--color-faint)]">
+        {label}
+      </span>
+      <div className="relative mt-2">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-faint)]" />
+        <input
+          className="w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] py-3 pl-11 pr-4 text-sm text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)]"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+        />
+      </div>
+    </label>
+  );
+}
+
+
 function InputField({
   label,
   maxLength,
@@ -621,30 +833,6 @@ function InputField({
       </span>
       <input
         maxLength={maxLength}
-        className="mt-2 w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)]"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
-function DateField({
-  label,
-  onChange,
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs uppercase tracking-[0.16em] text-[var(--color-faint)]">
-        {label}
-      </span>
-      <input
-        type="date"
         className="mt-2 w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)]"
         value={value}
         onChange={(event) => onChange(event.target.value)}

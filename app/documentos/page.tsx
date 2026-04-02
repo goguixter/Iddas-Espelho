@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ExternalLink, FileText } from "lucide-react";
 import { DocumentGenerator } from "@/components/document-generator";
@@ -10,13 +11,14 @@ import {
 export default async function DocumentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ orcamentoId?: string }>;
+  searchParams: Promise<{ orcamentoId?: string; tab?: string }>;
 }) {
-  const { orcamentoId = "" } = await searchParams;
+  const { orcamentoId = "", tab = "template" } = await searchParams;
+  const activeTab = tab === "historico" ? "historico" : "template";
   const [documents, recentOrcamentos, recentPessoas] = await Promise.all([
     listDocumentRecords(),
-    getRecentOrcamentoDocumentOptions(),
-    getRecentPessoaDocumentOptions(),
+    activeTab === "template" ? getRecentOrcamentoDocumentOptions() : Promise.resolve([]),
+    activeTab === "template" ? getRecentPessoaDocumentOptions() : Promise.resolve([]),
   ]);
 
   return (
@@ -44,67 +46,99 @@ export default async function DocumentosPage({
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="min-h-0 overflow-auto pr-1">
+      <div className="mb-5 inline-flex rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-1">
+        <TabLink active={activeTab === "template"} href={`/documentos?tab=template${orcamentoId ? `&orcamentoId=${encodeURIComponent(orcamentoId)}` : ""}`}>
+          Template
+        </TabLink>
+        <TabLink active={activeTab === "historico"} href="/documentos?tab=historico">
+          Histórico
+        </TabLink>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto pr-1">
+        {activeTab === "template" ? (
           <DocumentGenerator
             initialOrcamentoId={orcamentoId}
             recentOrcamentos={recentOrcamentos}
             recentPessoas={recentPessoas}
           />
-        </div>
-
-        <section className="flex min-h-0 flex-col rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
-                Histórico
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
-                Documentos gerados
-              </h2>
+        ) : (
+          <section className="flex min-h-full flex-col rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
+                  Histórico
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
+                  Documentos gerados
+                </h2>
+              </div>
+              <FileText className="h-5 w-5 text-[var(--color-accent)]" />
             </div>
-            <FileText className="h-5 w-5 text-[var(--color-accent)]" />
-          </div>
 
-          <div className="mt-5 min-h-0 flex-1 overflow-auto">
-            {documents.length === 0 ? (
-              <div className="rounded-[24px] border border-dashed border-[var(--color-line)] bg-[var(--color-panel)] px-5 py-6 text-sm text-[var(--color-muted)]">
-                Nenhum documento foi gerado ainda.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {documents.map((document) => (
-                  <article
-                    key={document.id}
-                    className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-faint)]">
-                          {document.template_key}
-                        </p>
-                        <h3 className="mt-1 text-base font-semibold text-[var(--color-ink)]">
-                          {document.title}
-                        </h3>
-                        <p className="mt-2 text-sm text-[var(--color-muted)]">
-                          Orçamento {document.entity_id} • {formatDateTime(document.created_at)}
-                        </p>
+            <div className="mt-5 min-h-0 flex-1 overflow-auto">
+              {documents.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-[var(--color-line)] bg-[var(--color-panel)] px-5 py-6 text-sm text-[var(--color-muted)]">
+                  Nenhum documento foi gerado ainda.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {documents.map((document) => (
+                    <article
+                      key={document.id}
+                      className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-faint)]">
+                            {document.template_key}
+                          </p>
+                          <h3 className="mt-1 text-base font-semibold text-[var(--color-ink)]">
+                            {document.title}
+                          </h3>
+                          <p className="mt-2 text-sm text-[var(--color-muted)]">
+                            Orçamento {document.entity_id} • {formatDateTime(document.created_at)}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/documentos/${document.id}`}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Link>
                       </div>
-                      <Link
-                        href={`/documentos/${document.id}`}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Link>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
       </div>
     </section>
+  );
+}
+
+function TabLink({
+  active,
+  children,
+  href,
+}: {
+  active: boolean;
+  children: ReactNode;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-xl px-4 py-2 text-sm transition ${
+        active
+          ? "bg-[var(--color-accent)] font-semibold text-slate-950"
+          : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+      }`}
+    >
+      {children}
+    </Link>
   );
 }
 

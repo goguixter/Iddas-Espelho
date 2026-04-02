@@ -6,9 +6,7 @@ export type ContractDocumentFormInput = {
   cancelamentosReembolsos?: string;
   cep: string;
   cidade: string;
-  cidadeAssinatura: string;
   condicoesTarifarias?: string;
-  dataAssinatura: string;
   estado: string;
   fornecedor?: string;
   localizadorReserva?: string;
@@ -97,4 +95,6 @@ export type RecentOrcamentoDocumentOption = {
   cliente_nome: string | null;
   id: string;
   identificador: string | null;
+  situacao_cor?: string | null;
+  situacao_nome?: string | null;
 };
