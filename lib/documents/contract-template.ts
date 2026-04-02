@@ -41,11 +41,9 @@ type ContractDocumentPayload = {
     nome: string;
   }>;
   reserva: {
-    cancelamentosReembolsos: string;
     condicoesTarifarias: string;
     fornecedor: string;
     localizador: string;
-    remarcacoes: string;
     servicoContratado: string;
   };
 };
@@ -88,6 +86,41 @@ export function buildManualContractDocument(input: ContractDocumentFormInput, so
   };
 }
 
+export function buildContractTemplatePreview() {
+  const document = buildManualContractDocument(
+    {
+      bairro: "Tauape",
+      cep: "60130-560",
+      cidade: "Fortaleza",
+      condicoesTarifarias:
+        "Tarifa econômica com regras de remarcação e cancelamento conforme política da companhia aérea.",
+      estado: "CE",
+      fornecedor: "Iberia Airlines",
+      localizadorReserva: "A4JIW3",
+      logradouro: "Rua Tubarão",
+      manualContratanteDocumento: "989.387.623-00",
+      manualContratanteDocumentoLabel: "CPF",
+      manualContratanteNome: "Daniel De Souza Sampaio",
+      manualPassageiros: [
+        {
+          dataNascimento: "20/03/1981",
+          documento: "989.387.623-00",
+          nome: "Daniel De Souza Sampaio",
+        },
+      ],
+      mode: "manual",
+      numero: "87",
+      servicoContratado: "Intermediação na compra de passagens aéreas",
+    },
+    {},
+  );
+
+  return {
+    html: document.html,
+    title: document.title,
+  };
+}
+
 function buildPayloadFromOrcamento(source: OrcamentoDocumentSource, input: ContractDocumentFormInput) {
   const payload = buildPayload(source, input);
   return payload;
@@ -113,18 +146,9 @@ function buildPayload(
       pickNestedString(raw, ["voos", "0", "codigo_localizador"]),
     ) ??
     "Não informado";
-  const termos = firstNonEmpty(
-    input.remarcacoes,
-    pickString(raw, "termos_condicoes"),
-    pickString(raw, "forma_pagamento"),
-  );
-  const cancelamentos = firstNonEmpty(
-    input.cancelamentosReembolsos,
-    pickString(raw, "termos_condicoes"),
-  );
   const condicoesTarifarias = firstNonEmpty(
     input.condicoesTarifarias,
-    pickString(raw, "forma_pagamento"),
+    pickString(raw, "termos_condicoes"),
     "Conforme regras tarifárias informadas no orçamento espelhado.",
   );
   const supplier =
@@ -158,14 +182,10 @@ function buildPayload(
     },
     passageiros: passageiroRows,
     reserva: {
-      cancelamentosReembolsos:
-        cancelamentos ?? "Conforme regras do fornecedor informado no orçamento.",
       condicoesTarifarias:
         condicoesTarifarias ?? "Conforme regras do fornecedor informado no orçamento.",
       fornecedor: supplier,
       localizador,
-      remarcacoes:
-        termos ?? "Conforme regras do fornecedor informado no orçamento.",
       servicoContratado:
         firstNonEmpty(input.servicoContratado) ??
         "Intermediação na compra de passagens aéreas",
@@ -244,17 +264,11 @@ function buildPayloadFromManual(
           },
         ],
     reserva: {
-      cancelamentosReembolsos:
-        firstNonEmpty(input.cancelamentosReembolsos) ??
-        "Conforme regras do fornecedor informado no contrato.",
       condicoesTarifarias:
         firstNonEmpty(input.condicoesTarifarias) ??
         "Conforme regras tarifárias informadas ao contratante.",
       fornecedor: firstNonEmpty(input.fornecedor) ?? "Não informado",
       localizador: firstNonEmpty(input.localizadorReserva) ?? "Não informado",
-      remarcacoes:
-        firstNonEmpty(input.remarcacoes) ??
-        "Conforme regras do fornecedor informado no contrato.",
       servicoContratado:
         firstNonEmpty(input.servicoContratado) ??
         "Intermediação na compra de passagens aéreas",
@@ -283,9 +297,9 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     .map(
       (passenger) => `
         <tr>
-          <td>${escapeHtml(passenger.nome)}</td>
-          <td>${escapeHtml(passenger.documento ?? "—")}</td>
-          <td>${escapeHtml(passenger.dataNascimento ?? "—")}</td>
+          <td class="cell-left">${escapeHtml(passenger.nome)}</td>
+          <td class="cell-center">${escapeHtml(formatCpfOrCnpj(passenger.documento ?? "—"))}</td>
+          <td class="cell-right">${escapeHtml(passenger.dataNascimento ?? "—")}</td>
         </tr>
       `,
     )
@@ -339,7 +353,10 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     }
 
     .party-line { margin-bottom: 3.5mm; }
-    .label, .var, .section-title, th { font-weight: 700; }
+    strong, b { font-weight: 700; }
+    .label, .section-title, th { font-weight: 700; }
+    .var { font-weight: 400; }
+    .party-line strong, .party-line .var, .signature-role strong { font-weight: 700 !important; }
     .label, .section-title { text-transform: uppercase; }
     .section-title { font-size: 11pt; margin: 8mm 0 4mm; }
     .subclause { margin-bottom: 2.8mm; }
@@ -355,15 +372,18 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
       line-height: 1.45;
       word-break: break-word;
     }
-    .col-name { width: 44%; }
-    .col-doc { width: 22%; }
-    .col-date { width: 34%; }
+    .col-name { width: 46%; }
+    .col-doc { width: 27%; }
+    .col-date { width: 27%; }
+    .cell-left { text-align: left; }
+    .cell-center { text-align: center; }
+    .cell-right { text-align: right; }
     .date-right { margin-top: 14mm; text-align: right; font-size: 10.8pt; line-height: 1.6; }
     .signatures { display: flex; justify-content: space-between; gap: 16mm; margin-top: 30mm; }
     .signature-block { flex: 1; text-align: center; }
     .signature-line { width: 62%; margin: 0 auto 5mm; border-top: 1px solid rgba(0,0,0,0.85); height: 0; }
     .signature-role, .signature-name, .signature-doc { text-align: center; margin: 0; font-size: 10.4pt; line-height: 1.5; }
-    .signature-role { text-transform: uppercase; margin-bottom: 1.5mm; }
+    .signature-role { text-transform: uppercase; margin-bottom: 1.5mm; font-weight: 700; }
 
     .section-title, table, tr, td, th, .service-box, .date-right, .signatures, .signature-block {
       page-break-inside: avoid;
@@ -387,19 +407,19 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     </h1>
 
     <p class="party-line">
-      <span class="label">CONTRATADA:</span> <strong>${escapeHtml(payload.contratada.nome)}</strong>, inscrita no CNPJ sob o nº <strong>${escapeHtml(payload.contratada.cnpj)}</strong>,
-      com sede na ${escapeHtml(payload.contratada.endereco)}
+      <strong class="label">CONTRATADA:</strong> <strong>${escapeHtml(toUpperDisplay(payload.contratada.nome))}</strong>, inscrita no CNPJ sob o nº <strong>${escapeHtml(formatCpfOrCnpj(payload.contratada.cnpj))}</strong>,
+      com sede na <strong>${escapeHtml(toUpperDisplay(payload.contratada.endereco))}</strong>
     </p>
 
     <p class="party-line">
-      <span class="label">CONTRATANTE:</span>
-      <span class="var">${escapeHtml(payload.contratante.nome)}</span>, inscrito(a) no
-      <span class="var">${escapeHtml(payload.contratante.documentoLabel)}</span> sob o nº
-      <span class="var">${escapeHtml(payload.contratante.documento)}</span>, residente e domiciliado(a) na
-      <span class="var">${escapeHtml(payload.contratante.logradouro)}, nº ${escapeHtml(payload.contratante.numero)}</span>, bairro
-      <span class="var">${escapeHtml(payload.contratante.bairro)}</span>, CEP:
-      <span class="var">${escapeHtml(payload.contratante.cep)}</span>,
-      <span class="var">${escapeHtml(payload.contratante.cidade)}</span>/<span class="var">${escapeHtml(payload.contratante.estado)}</span>.
+      <strong class="label">CONTRATANTE:</strong>
+      <strong class="var">${escapeHtml(toUpperDisplay(payload.contratante.nome))}</strong>, inscrito(a) no
+      <strong class="var">${escapeHtml(toUpperDisplay(payload.contratante.documentoLabel))}</strong> sob o nº
+      <strong class="var">${escapeHtml(formatCpfOrCnpj(payload.contratante.documento))}</strong>, residente e domiciliado(a) na
+      <strong class="var">${escapeHtml(toUpperDisplay(payload.contratante.logradouro))}, nº ${escapeHtml(toUpperDisplay(payload.contratante.numero))}</strong>, bairro
+      <strong class="var">${escapeHtml(toUpperDisplay(payload.contratante.bairro))}</strong>, CEP:
+      <strong class="var">${escapeHtml(formatCep(payload.contratante.cep))}</strong>,
+      <strong class="var">${escapeHtml(toUpperDisplay(payload.contratante.cidade))}</strong>/<strong class="var">${escapeHtml(toUpperDisplay(payload.contratante.estado))}</strong>.
     </p>
 
     <hr class="separator" />
@@ -442,9 +462,9 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     <table>
       <thead>
         <tr>
-          <th class="col-name">Nome Completo (conforme documento)</th>
-          <th class="col-doc">CPF/CNPJ ou Passaporte</th>
-          <th class="col-date">Data de Nascimento</th>
+          <th class="col-name cell-left">Nome Completo (conforme documento)</th>
+          <th class="col-doc cell-center">CPF/RG ou Passaporte</th>
+          <th class="col-date cell-right">Data de Nascimento</th>
         </tr>
       </thead>
       <tbody>
@@ -464,13 +484,10 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     </p>
 
     <p class="service-box">
-      Localizador da reserva:<br />
-      <span class="var">${escapeHtml(payload.reserva.localizador)}</span><br />
-      Serviço contratado: <span class="var">${escapeHtml(payload.reserva.servicoContratado)}</span><br />
-      Fornecedor: <span class="var">${escapeHtml(payload.reserva.fornecedor)}</span><br />
-      Condições tarifárias: <span class="var">${escapeHtml(payload.reserva.condicoesTarifarias)}</span><br />
-      Remarcações: <span class="var">${escapeHtml(payload.reserva.remarcacoes)}</span><br />
-      Cancelamentos/Reembolsos: <span class="var">${escapeHtml(payload.reserva.cancelamentosReembolsos)}</span>
+      <strong>Localizador da reserva:</strong> <span class="var">${escapeHtml(payload.reserva.localizador)}</span><br />
+      <strong>Serviço contratado:</strong> <span class="var">${escapeHtml(payload.reserva.servicoContratado)}</span><br />
+      <strong>Fornecedor:</strong> <span class="var">${escapeHtml(payload.reserva.fornecedor)}</span><br />
+      <strong>Condições tarifárias:</strong> <span class="var">${escapeHtml(payload.reserva.condicoesTarifarias)}</span>
     </p>
 
     <p class="subclause">
@@ -524,21 +541,51 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     <section class="signatures">
       <div class="signature-block">
         <div class="signature-line"></div>
-        <p class="signature-role">CONTRATANTE</p>
-        <p class="signature-name">${escapeHtml(payload.contratante.nome)}</p>
-        <p class="signature-doc">${escapeHtml(payload.contratante.documentoLabel)}: ${escapeHtml(payload.contratante.documento)}</p>
+        <p class="signature-role"><strong>CONTRATANTE</strong></p>
+        <p class="signature-name">${escapeHtml(toUpperDisplay(payload.contratante.nome))}</p>
+        <p class="signature-doc">${escapeHtml(toUpperDisplay(payload.contratante.documentoLabel))}: ${escapeHtml(formatCpfOrCnpj(payload.contratante.documento))}</p>
       </div>
 
       <div class="signature-block">
         <div class="signature-line"></div>
-        <p class="signature-role">CONTRATADA</p>
-        <p class="signature-name">${escapeHtml(payload.contratada.nome)}</p>
-        <p class="signature-doc">CNPJ: ${escapeHtml(payload.contratada.cnpj)}</p>
+        <p class="signature-role"><strong>CONTRATADA</strong></p>
+        <p class="signature-name">${escapeHtml(toUpperDisplay(payload.contratada.nome))}</p>
+        <p class="signature-doc">CNPJ: ${escapeHtml(formatCpfOrCnpj(payload.contratada.cnpj))}</p>
       </div>
     </section>
   </main>
 </body>
 </html>`;
+}
+
+function toUpperDisplay(value: string | null | undefined) {
+  return (value ?? "").toLocaleUpperCase("pt-BR");
+}
+
+function formatCpfOrCnpj(value: string | null | undefined) {
+  const raw = (value ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+
+  if (digits.length === 11) {
+    return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  }
+
+  if (digits.length === 14) {
+    return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  }
+
+  return toUpperDisplay(raw);
+}
+
+function formatCep(value: string | null | undefined) {
+  const raw = (value ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+
+  if (digits.length === 8) {
+    return digits.replace(/(\d{5})(\d{3})/, "$1-$2");
+  }
+
+  return toUpperDisplay(raw);
 }
 
 function extractPassengers(

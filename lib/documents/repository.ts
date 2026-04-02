@@ -1,11 +1,46 @@
 import { db } from "@/lib/db";
 import type {
+  DocumentTemplateRecord,
   DocumentRecord,
   OrcamentoDocumentSource,
   PessoaDocumentSource,
   RecentPessoaDocumentOption,
   RecentOrcamentoDocumentOption,
 } from "@/lib/documents/types";
+
+export function listDocumentTemplates() {
+  return db
+    .prepare(
+      `
+        SELECT key, title, description, version, is_active, updated_at
+        FROM document_templates
+        ORDER BY updated_at DESC, key ASC
+      `,
+    )
+    .all() as DocumentTemplateRecord[];
+}
+
+export function updateDocumentTemplateState(key: string, isActive: boolean) {
+  db.prepare(
+    `
+      UPDATE document_templates
+      SET is_active = ?, updated_at = ?
+      WHERE key = ?
+    `,
+  ).run(isActive ? 1 : 0, new Date().toISOString(), key);
+}
+
+export function getDocumentTemplate(key: string) {
+  return db
+    .prepare(
+      `
+        SELECT key, title, description, version, is_active, updated_at
+        FROM document_templates
+        WHERE key = ?
+      `,
+    )
+    .get(key) as DocumentTemplateRecord | undefined;
+}
 
 export function listDocumentRecords(limit = 20) {
   return db

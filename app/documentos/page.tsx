@@ -2,7 +2,10 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ExternalLink, FileText } from "lucide-react";
 import { DocumentGenerator } from "@/components/document-generator";
+import { DocumentTemplateManager } from "@/components/document-template-manager";
+import { buildContractTemplatePreview } from "@/lib/documents/contract-template";
 import {
+  listDocumentTemplates,
   getRecentOrcamentoDocumentOptions,
   getRecentPessoaDocumentOptions,
   listDocumentRecords,
@@ -14,11 +17,16 @@ export default async function DocumentosPage({
   searchParams: Promise<{ orcamentoId?: string; tab?: string }>;
 }) {
   const { orcamentoId = "", tab = "template" } = await searchParams;
-  const activeTab = tab === "historico" ? "historico" : "template";
-  const [documents, recentOrcamentos, recentPessoas] = await Promise.all([
-    listDocumentRecords(),
-    activeTab === "template" ? getRecentOrcamentoDocumentOptions() : Promise.resolve([]),
-    activeTab === "template" ? getRecentPessoaDocumentOptions() : Promise.resolve([]),
+  const activeTab = ["template", "orcamento", "manual", "historico"].includes(tab)
+    ? (tab as "template" | "orcamento" | "manual" | "historico")
+    : "template";
+  const copy = getDocumentsTabCopy(activeTab);
+  const preview = buildContractTemplatePreview();
+  const [documents, recentOrcamentos, recentPessoas, templates] = await Promise.all([
+    activeTab === "historico" ? listDocumentRecords() : Promise.resolve([]),
+    activeTab === "orcamento" ? getRecentOrcamentoDocumentOptions() : Promise.resolve([]),
+    activeTab === "manual" ? getRecentPessoaDocumentOptions() : Promise.resolve([]),
+    activeTab === "template" ? listDocumentTemplates() : Promise.resolve([]),
   ]);
 
   return (
@@ -26,14 +34,13 @@ export default async function DocumentosPage({
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
-            Documentos
+            {copy.eyebrow}
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">
-            Modelos gerados a partir do espelho local
+            {copy.title}
           </h1>
           <p className="mt-2 text-sm text-[var(--color-muted)]">
-            Template base versionado, preview fiel para impressão e snapshot persistido
-            no banco.
+            {copy.description}
           </p>
         </div>
         <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-right">
@@ -41,14 +48,20 @@ export default async function DocumentosPage({
             Gerados
           </p>
           <p className="mt-1 text-2xl font-semibold text-[var(--color-ink)]">
-            {documents.length}
+            {activeTab === "historico" ? documents.length : 1}
           </p>
         </div>
       </div>
 
       <div className="mb-5 inline-flex rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-1">
-        <TabLink active={activeTab === "template"} href={`/documentos?tab=template${orcamentoId ? `&orcamentoId=${encodeURIComponent(orcamentoId)}` : ""}`}>
+        <TabLink active={activeTab === "template"} href="/documentos?tab=template">
           Template
+        </TabLink>
+        <TabLink active={activeTab === "orcamento"} href={`/documentos?tab=orcamento${orcamentoId ? `&orcamentoId=${encodeURIComponent(orcamentoId)}` : ""}`}>
+          Criar por orçamento
+        </TabLink>
+        <TabLink active={activeTab === "manual"} href="/documentos?tab=manual">
+          Criar manual
         </TabLink>
         <TabLink active={activeTab === "historico"} href="/documentos?tab=historico">
           Histórico
@@ -57,9 +70,21 @@ export default async function DocumentosPage({
 
       <div className="min-h-0 flex-1 overflow-auto pr-1">
         {activeTab === "template" ? (
+          <DocumentTemplateManager
+            initialPreviewHtml={preview.html}
+            templates={templates}
+          />
+        ) : activeTab === "orcamento" ? (
           <DocumentGenerator
+            forcedMode="orcamento"
             initialOrcamentoId={orcamentoId}
             recentOrcamentos={recentOrcamentos}
+            recentPessoas={[]}
+          />
+        ) : activeTab === "manual" ? (
+          <DocumentGenerator
+            forcedMode="manual"
+            recentOrcamentos={[]}
             recentPessoas={recentPessoas}
           />
         ) : (
@@ -150,4 +175,40 @@ function formatDateTime(input: string) {
     month: "2-digit",
     year: "2-digit",
   }).format(new Date(input));
+}
+
+function getDocumentsTabCopy(
+  tab: "template" | "orcamento" | "manual" | "historico",
+) {
+  switch (tab) {
+    case "orcamento":
+      return {
+        description:
+          "Selecione um orçamento para preencher o contrato automaticamente e revisar a prévia antes de gerar.",
+        eyebrow: "Criar por orçamento",
+        title: "Contrato com dados do orçamento",
+      };
+    case "manual":
+      return {
+        description:
+          "Monte o contrato manualmente usando pessoas da base e campos livres para contratante e passageiros.",
+        eyebrow: "Criar manual",
+        title: "Contrato com preenchimento manual",
+      };
+    case "historico":
+      return {
+        description:
+          "Consulte os documentos já gerados, abra a versão persistida e imprima ou exporte em PDF.",
+        eyebrow: "Histórico",
+        title: "Documentos gerados",
+      };
+    case "template":
+    default:
+      return {
+        description:
+          "Gerencie os modelos disponíveis, visualize a estrutura final do contrato e ative ou desative templates.",
+        eyebrow: "Template",
+        title: "Modelos de documentos",
+      };
+  }
 }

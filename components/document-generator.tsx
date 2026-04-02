@@ -13,7 +13,6 @@ import {
   FileText,
   LoaderCircle,
   MapPinned,
-  Plane,
   Plus,
   RefreshCcw,
   ReceiptText,
@@ -30,7 +29,6 @@ import type {
 
 type FormState = {
   bairro: string;
-  cancelamentosReembolsos: string;
   cep: string;
   cidade: string;
   condicoesTarifarias: string;
@@ -45,7 +43,6 @@ type FormState = {
   numero: string;
   orcamentoId: string;
   pessoaContratanteId: string;
-  remarcacoes: string;
   servicoContratado: string;
 };
 
@@ -62,10 +59,12 @@ const initialPassenger: ManualPassenger = {
 };
 
 export function DocumentGenerator({
+  forcedMode,
   initialOrcamentoId = "",
   recentOrcamentos,
   recentPessoas,
 }: {
+  forcedMode?: "manual" | "orcamento";
   initialOrcamentoId?: string;
   recentOrcamentos: RecentOrcamentoDocumentOption[];
   recentPessoas: RecentPessoaDocumentOption[];
@@ -85,27 +84,34 @@ export function DocumentGenerator({
   const [manualPassengers, setManualPassengers] = useState<ManualPassenger[]>([]);
   const [form, setForm] = useState<FormState>({
     bairro: "",
-    cancelamentosReembolsos: "",
     cep: "",
     cidade: "",
     condicoesTarifarias: "",
-    estado: "RS",
+    estado: "",
     fornecedor: "",
     localizadorReserva: "",
     logradouro: "",
     manualContratanteDocumento: "",
     manualContratanteDocumentoLabel: "CPF",
     manualContratanteNome: "",
-    mode: initialOrcamentoId ? "orcamento" : "manual",
+    mode: forcedMode ?? (initialOrcamentoId ? "orcamento" : "manual"),
     numero: "",
     orcamentoId: initialOrcamentoId,
     pessoaContratanteId: "",
-    remarcacoes: "",
     servicoContratado: "Intermediação na compra de passagens aéreas",
   });
 
   const datalistContratante = useMemo(() => "pessoas-contratante-documentos", []);
   const datalistPassageiros = useMemo(() => "pessoas-passageiros-documentos", []);
+  const isStandaloneOrcamento = forcedMode === "orcamento";
+
+  useEffect(() => {
+    if (!forcedMode) {
+      return;
+    }
+
+    setForm((current) => (current.mode === forcedMode ? current : { ...current, mode: forcedMode }));
+  }, [forcedMode]);
 
   useEffect(() => {
     if (form.mode !== "orcamento") {
@@ -165,7 +171,7 @@ export function DocumentGenerator({
           bairro: current.bairro || source.clienteBairro || "",
           cep: current.cep || source.clienteCep || "",
           cidade: current.cidade || source.clienteCidade || "",
-          estado: current.estado || source.clienteEstado || "RS",
+          estado: current.estado || source.clienteEstado || "",
           localizadorReserva: current.localizadorReserva || extractString(source.raw?.voos?.[0]?.localizador),
           logradouro: current.logradouro || source.clienteEndereco || "",
           manualContratanteDocumento:
@@ -209,7 +215,7 @@ export function DocumentGenerator({
           bairro: source.bairro || current.bairro,
           cep: source.cep || current.cep,
           cidade: source.cidade || current.cidade,
-          estado: source.estado || current.estado || "RS",
+          estado: source.estado || current.estado || "",
           logradouro: source.endereco || current.logradouro,
           manualContratanteDocumento:
             source.cpf || source.passaporte || current.manualContratanteDocumento,
@@ -352,72 +358,73 @@ export function DocumentGenerator({
   }
 
   return (
-    <section className="rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
-            Template Base
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
-            Contrato de intermediação
-          </h2>
-          <p className="mt-2 max-w-3xl text-sm text-[var(--color-muted)]">
-            Gere por orçamento com variáveis herdadas automaticamente ou monte manualmente
-            usando pessoas da base e campos livres.
-          </p>
+    <section
+      className={
+        isStandaloneOrcamento
+          ? "flex h-full min-h-0 flex-col"
+          : "rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]"
+      }
+    >
+      {isStandaloneOrcamento ? null : (
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
+              Template Base
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
+              Contrato de intermediação
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm text-[var(--color-muted)]">
+              Gere por orçamento com variáveis herdadas automaticamente ou monte manualmente
+              usando pessoas da base e campos livres.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-right">
+            <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-faint)]">
+              Template
+            </p>
+            <p className="mt-1 text-sm font-medium text-[var(--color-ink)]">Contrato v1</p>
+          </div>
         </div>
-        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-right">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-faint)]">
-            Template
-          </p>
-          <p className="mt-1 text-sm font-medium text-[var(--color-ink)]">Contrato v1</p>
+      )}
+
+      {!forcedMode ? (
+        <div className="mt-5 inline-flex rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-1">
+          <ModeButton
+            active={form.mode === "orcamento"}
+            label="Por orçamento"
+            onClick={() => updateField("mode", "orcamento")}
+          />
+          <ModeButton
+            active={form.mode === "manual"}
+            label="Manual"
+            onClick={() => updateField("mode", "manual")}
+          />
         </div>
-      </div>
+      ) : null}
 
-      <div className="mt-5 inline-flex rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-1">
-        <ModeButton
-          active={form.mode === "orcamento"}
-          label="Por orçamento"
-          onClick={() => updateField("mode", "orcamento")}
-        />
-        <ModeButton
-          active={form.mode === "manual"}
-          label="Manual"
-          onClick={() => updateField("mode", "manual")}
-        />
-      </div>
-
-      <form onSubmit={handleSubmit} className="mt-5 space-y-5">
+      <form onSubmit={handleSubmit} className={`${isStandaloneOrcamento ? "flex min-h-0 flex-1 flex-col space-y-5" : "mt-5 space-y-5"}`}>
         <div
-          className={`grid gap-4 ${
+          className={`grid ${isStandaloneOrcamento ? "min-h-0 flex-1" : ""} gap-4 ${
             form.mode === "orcamento"
               ? "xl:grid-cols-[0.8fr_1.2fr]"
               : "xl:grid-cols-[1.15fr_1fr]"
           }`}
         >
-          <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-            <div className="flex items-center gap-2 text-[var(--color-ink)]">
-              {form.mode === "orcamento" ? (
-                <Plane className="h-4 w-4 text-[var(--color-accent)]" />
-              ) : (
-                <UserRound className="h-4 w-4 text-[var(--color-accent)]" />
-              )}
-              <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                {form.mode === "orcamento" ? "Origem do documento" : "Contratante"}
-              </h3>
-            </div>
-
+          <section className={`rounded-[24px] border border-[var(--color-line)] p-4 ${form.mode === "orcamento" ? "bg-[var(--color-surface)]" : "bg-[var(--color-panel)]"}`}>
             {form.mode === "orcamento" ? (
-              <div className="mt-4 space-y-4">
+              <div className="space-y-4">
                 <SearchField
                   label="Buscar orçamento por nome"
+                  labelClassName="text-[var(--color-accent)]"
+                  inputClassName="bg-[var(--color-panel)]"
                   value={orcamentoSearch}
                   onChange={setOrcamentoSearch}
                   placeholder="Digite o nome do cliente, tag ou ID"
                 />
 
                 {orcamentoSearchResults.length > 0 ? (
-                  <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2">
+                  <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-2">
                     <div className="space-y-2">
                       {orcamentoSearchResults.map((option) => (
                         <button
@@ -453,14 +460,43 @@ export function DocumentGenerator({
                       key={option.id}
                       type="button"
                       onClick={() => updateField("orcamentoId", option.id)}
-                      className="cursor-pointer rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-ink)]"
+                      className="cursor-pointer rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-ink)]"
                     >
                       {option.cliente_nome ?? option.identificador ?? "Sem cliente"}
                     </button>
                   ))}
                 </div>
+
+                {error ? (
+                  <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                    {error}
+                  </div>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4" />
+                  )}
+                  Gerar documento
+                </button>
               </div>
             ) : (
+              <div>
+                <div className="flex items-center gap-2 text-[var(--color-ink)]">
+                  <UserRound className="h-4 w-4 text-[var(--color-accent)]" />
+                  <div>
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
+                      Contratante
+                    </h3>
+                  </div>
+                </div>
+
               <div className="mt-4 space-y-3">
                 <InputWithDatalist
                   datalistId={datalistContratante}
@@ -478,11 +514,12 @@ export function DocumentGenerator({
                   <InputField label="Documento manual" value={form.manualContratanteDocumento} onChange={(value) => updateField("manualContratanteDocumento", value)} />
                 </div>
               </div>
+              </div>
             )}
           </section>
 
           {form.mode === "orcamento" ? (
-            <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
+            <section className="flex min-h-0 flex-col rounded-[24px] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
               <div className="flex items-center justify-between gap-3 text-[var(--color-ink)]">
                 <div className="flex items-center gap-2">
                   <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
@@ -490,24 +527,27 @@ export function DocumentGenerator({
                     Preview automático
                   </h3>
                 </div>
-                {loadingPreview ? (
-                  <span className="inline-flex items-center gap-2 text-xs text-[var(--color-muted)]">
-                    <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
-                    Atualizando
-                  </span>
-                ) : null}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-[var(--color-ink)]">Contrato v1</span>
+                  {loadingPreview ? (
+                    <span className="inline-flex items-center gap-2 text-xs text-[var(--color-muted)]">
+                      <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
+                      Atualizando
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
-              <div className="mt-4 overflow-hidden rounded-[22px] border border-[var(--color-line)] bg-[var(--color-surface)]">
+              <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)]">
                 {previewHtml ? (
                   <iframe
                     title="Prévia do contrato"
                     srcDoc={previewHtml}
-                    className="h-[760px] w-full bg-white"
-                    style={{ zoom: 0.8 }}
+                    className="h-full w-full bg-white"
+                    style={{ zoom: 0.68 }}
                   />
                 ) : (
-                  <div className="flex h-[760px] items-center justify-center px-6 text-center text-sm text-[var(--color-muted)]">
+                  <div className="flex h-full min-h-[720px] items-center justify-center px-6 text-center text-sm text-[var(--color-muted)]">
                     Selecione um orçamento para gerar a prévia automática do contrato.
                   </div>
                 )}
@@ -645,8 +685,6 @@ export function DocumentGenerator({
               <InputField label="Serviço contratado" value={form.servicoContratado} onChange={(value) => updateField("servicoContratado", value)} />
               <InputField label="Fornecedor" value={form.fornecedor} onChange={(value) => updateField("fornecedor", value)} />
               <TextAreaField label="Condições tarifárias" value={form.condicoesTarifarias} onChange={(value) => updateField("condicoesTarifarias", value)} />
-              <TextAreaField label="Remarcações" value={form.remarcacoes} onChange={(value) => updateField("remarcacoes", value)} />
-              <TextAreaField label="Cancelamentos/Reembolsos" value={form.cancelamentosReembolsos} onChange={(value) => updateField("cancelamentosReembolsos", value)} />
             </div>
           </section>
 
@@ -675,34 +713,22 @@ export function DocumentGenerator({
             ) : null}
           </section>
         </div>
-        ) : (
-          <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-            <div className="rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
-              {loadingSource
-                ? "Carregando dados automáticos..."
-                : "A prévia usa as variáveis herdadas do orçamento. Cidade e data são aplicadas automaticamente no documento final."}
-            </div>
+        ) : null}
 
-            {error ? (
-              <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-                {error}
-              </div>
-            ) : null}
-          </section>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <FileText className="h-4 w-4" />
-          )}
-          Gerar documento
-        </button>
+        {form.mode === "manual" ? (
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+            Gerar documento
+          </button>
+        ) : null}
       </form>
     </section>
   );
@@ -787,24 +813,28 @@ function InputWithDatalist({
 
 function SearchField({
   label,
+  labelClassName,
+  inputClassName,
   onChange,
   placeholder,
   value,
 }: {
   label: string;
+  labelClassName?: string;
+  inputClassName?: string;
   onChange: (value: string) => void;
   placeholder?: string;
   value: string;
 }) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-[0.16em] text-[var(--color-faint)]">
+      <span className={`text-xs uppercase tracking-[0.16em] ${labelClassName ?? "text-[var(--color-faint)]"}`}>
         {label}
       </span>
       <div className="relative mt-2">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-faint)]" />
         <input
-          className="w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] py-3 pl-11 pr-4 text-sm text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)]"
+          className={`w-full rounded-2xl border border-[var(--color-line)] py-3 pl-11 pr-4 text-sm text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)] ${inputClassName ?? "bg-[var(--color-surface)]"}`}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}

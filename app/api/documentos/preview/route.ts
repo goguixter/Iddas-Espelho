@@ -12,7 +12,6 @@ import { CONTRACT_TEMPLATE_KEY } from "@/lib/documents/types";
 
 const previewDocumentSchema = z.object({
   bairro: z.string().trim().min(1),
-  cancelamentosReembolsos: z.string().trim().optional(),
   cep: z.string().trim().min(1),
   cidade: z.string().trim().min(1),
   condicoesTarifarias: z.string().trim().optional(),
@@ -37,7 +36,6 @@ const previewDocumentSchema = z.object({
   orcamentoId: z.string().trim().optional(),
   passageirosPessoaIds: z.array(z.string().trim().min(1)).optional(),
   pessoaContratanteId: z.string().trim().optional(),
-  remarcacoes: z.string().trim().optional(),
   servicoContratado: z.string().trim().optional(),
   templateKey: z.literal(CONTRACT_TEMPLATE_KEY).default(CONTRACT_TEMPLATE_KEY),
 });

@@ -262,6 +262,15 @@ function runMigrations() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS document_templates (
+      key TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   ensureColumn("sync_state", "status", "TEXT NOT NULL DEFAULT 'idle'");
@@ -420,6 +429,10 @@ function runMigrations() {
     "idx_document_records_template",
     "CREATE INDEX IF NOT EXISTS idx_document_records_template ON document_records (template_key, created_at DESC)",
   );
+  ensureIndex(
+    "idx_document_templates_active",
+    "CREATE INDEX IF NOT EXISTS idx_document_templates_active ON document_templates (is_active, updated_at DESC)",
+  );
 
   db.exec(`
     UPDATE orcamentos
@@ -474,6 +487,24 @@ function runMigrations() {
       `,
     ).run({ scope });
   }
+
+  db.prepare(
+    `
+      INSERT INTO document_templates (key, title, description, version, is_active, updated_at)
+      VALUES (@key, @title, @description, @version, @is_active, @updated_at)
+      ON CONFLICT(key) DO UPDATE SET
+        title = excluded.title,
+        description = excluded.description,
+        version = excluded.version
+    `,
+  ).run({
+    description: "Contrato base de intermediação e consultoria com preenchimento automático e geração em HTML/PDF.",
+    is_active: 1,
+    key: "contrato_intermediacao",
+    title: "Contrato de intermediação",
+    updated_at: new Date().toISOString(),
+    version: 1,
+  });
 
   refreshProjectionTables();
 }

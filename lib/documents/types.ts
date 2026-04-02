@@ -1,9 +1,17 @@
 export const CONTRACT_TEMPLATE_KEY = "contrato_intermediacao";
 export const CONTRACT_TEMPLATE_VERSION = 1;
 
+export type DocumentTemplateRecord = {
+  description: string;
+  is_active: number;
+  key: string;
+  title: string;
+  updated_at: string;
+  version: number;
+};
+
 export type ContractDocumentFormInput = {
   bairro: string;
-  cancelamentosReembolsos?: string;
   cep: string;
   cidade: string;
   condicoesTarifarias?: string;
@@ -24,7 +32,6 @@ export type ContractDocumentFormInput = {
   orcamentoId?: string;
   passageirosPessoaIds?: string[];
   pessoaContratanteId?: string;
-  remarcacoes?: string;
   servicoContratado?: string;
 };
 
