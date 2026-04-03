@@ -19,14 +19,6 @@ export type ContractDocumentFormInput = {
   fornecedor?: string;
   localizadorReserva?: string;
   logradouro: string;
-  manualContratanteDocumento?: string;
-  manualContratanteDocumentoLabel?: string;
-  manualContratanteNome?: string;
-  manualPassageiros?: Array<{
-    dataNascimento?: string;
-    documento?: string;
-    nome: string;
-  }>;
   mode: "manual" | "orcamento";
   numero: string;
   orcamentoId?: string;

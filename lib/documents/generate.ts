@@ -43,9 +43,9 @@ export function resolveDocumentDraft(payload: DocumentRequestInput) {
     .map((id) => getPessoaDocumentSource(id))
     .filter((value): value is NonNullable<typeof value> => Boolean(value));
 
-  if (!contratante && !payload.manualContratanteNome?.trim()) {
+  if (!contratante) {
     throw new DocumentDraftError(
-      "Informe o contratante manualmente ou selecione uma pessoa.",
+      "Selecione uma pessoa como contratante para gerar o documento.",
       400,
     );
   }

@@ -10,18 +10,6 @@ export const documentRequestSchema = z.object({
   fornecedor: z.string().trim().optional(),
   localizadorReserva: z.string().trim().optional(),
   logradouro: z.string().trim().min(1),
-  manualContratanteDocumento: z.string().trim().optional(),
-  manualContratanteDocumentoLabel: z.string().trim().optional(),
-  manualContratanteNome: z.string().trim().optional(),
-  manualPassageiros: z
-    .array(
-      z.object({
-        dataNascimento: z.string().trim().optional(),
-        documento: z.string().trim().optional(),
-        nome: z.string().trim().min(1),
-      }),
-    )
-    .optional(),
   mode: z.enum(["manual", "orcamento"]).default("orcamento"),
   numero: z.string().trim().min(1),
   orcamentoId: z.string().trim().optional(),

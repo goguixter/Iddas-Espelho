@@ -28,9 +28,6 @@ type FormState = {
   fornecedor: string;
   localizadorReserva: string;
   logradouro: string;
-  manualContratanteDocumento: string;
-  manualContratanteDocumentoLabel: string;
-  manualContratanteNome: string;
   mode: "manual" | "orcamento";
   numero: string;
   orcamentoId: string;
@@ -45,8 +42,6 @@ const EMPTY_AUTOFILL_FIELDS = {
   estado: "",
   localizadorReserva: "",
   logradouro: "",
-  manualContratanteDocumento: "",
-  manualContratanteNome: "",
   numero: "",
 } as const;
 
@@ -63,9 +58,6 @@ function createInitialFormState(
     fornecedor: "",
     localizadorReserva: "",
     logradouro: "",
-    manualContratanteDocumento: "",
-    manualContratanteDocumentoLabel: "CPF",
-    manualContratanteNome: "",
     mode: forcedMode ?? (initialOrcamentoId ? "orcamento" : "manual"),
     numero: "",
     orcamentoId: initialOrcamentoId,
@@ -152,8 +144,6 @@ function applyOrcamentoAutofill(current: FormState, source: {
     estado: source.clienteEstado || "",
     localizadorReserva: extractOrcamentoLocalizador(source.raw),
     logradouro: source.clienteEndereco || "",
-    manualContratanteDocumento: source.clienteCpf || "",
-    manualContratanteNome: source.clienteNome || "",
     numero: source.clienteNumero || "",
   };
 }
@@ -167,9 +157,6 @@ function applyPessoaAutofill(current: FormState, source: PessoaDocumentSource) {
     cidade: source.cidade || "",
     estado: source.estado || "",
     logradouro: source.endereco || "",
-    manualContratanteDocumento: source.cpf || source.passaporte || "",
-    manualContratanteDocumentoLabel: source.cpf ? "CPF" : "Passaporte",
-    manualContratanteNome: source.nome || "",
     numero: source.numero || "",
   };
 }
@@ -748,7 +735,6 @@ export function DocumentGenerator({
       setForm((current) => ({
         ...current,
         ...EMPTY_AUTOFILL_FIELDS,
-        manualContratanteDocumentoLabel: "CPF",
       }));
       return;
     }
@@ -1038,7 +1024,10 @@ export function DocumentGenerator({
                           );
                         }}
                       >
-                        {toShortPersonName(form.manualContratanteNome || form.pessoaContratanteId)}
+                        {toShortPersonName(
+                          selectedPassengerPeople.find((item) => item.id === form.pessoaContratanteId)?.nome ||
+                            form.pessoaContratanteId,
+                        )}
                       </RemovableTag>
                     ) : null}
                   </div>

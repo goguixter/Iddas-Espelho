@@ -102,21 +102,50 @@ export function buildContractTemplatePreview() {
       fornecedor: "Iberia Airlines",
       localizadorReserva: "A4JIW3",
       logradouro: "Rua Tubarão",
-      manualContratanteDocumento: "989.387.623-00",
-      manualContratanteDocumentoLabel: "CPF",
-      manualContratanteNome: "Daniel De Souza Sampaio",
-      manualPassageiros: [
-        {
-          dataNascimento: "20/03/1981",
-          documento: "989.387.623-00",
-          nome: "Daniel De Souza Sampaio",
-        },
-      ],
       mode: "manual",
       numero: "87",
       servicoContratado: "Intermediação na compra de passagens aéreas",
     },
-    {},
+    {
+      contratante: {
+        bairro: "Tauape",
+        celular: null,
+        cep: "60130-560",
+        cidade: "Fortaleza",
+        complemento: null,
+        cpf: "989.387.623-00",
+        createdAt: null,
+        email: null,
+        endereco: "Rua Tubarão",
+        estado: "CE",
+        id: "preview",
+        nascimento: "1981-03-20",
+        nome: "Daniel De Souza Sampaio",
+        numero: "87",
+        passaporte: null,
+        raw: null,
+      },
+      passageiros: [
+        {
+          bairro: "Tauape",
+          celular: null,
+          cep: "60130-560",
+          cidade: "Fortaleza",
+          complemento: null,
+          cpf: "989.387.623-00",
+          createdAt: null,
+          email: null,
+          endereco: "Rua Tubarão",
+          estado: "CE",
+          id: "preview",
+          nascimento: "1981-03-20",
+          nome: "Daniel De Souza Sampaio",
+          numero: "87",
+          passaporte: null,
+          raw: null,
+        },
+      ],
+    },
   );
 
   return {
@@ -206,24 +235,13 @@ function buildPayloadFromManual(
       documento: person.cpf ?? person.passaporte,
       nome: person.nome ?? "Passageiro",
     })) ?? [];
-  const manualPassageiros =
-    input.manualPassageiros?.map((passenger) => ({
-      dataNascimento: firstNonEmpty(passenger.dataNascimento) ?? null,
-      documento: firstNonEmpty(passenger.documento) ?? null,
-      nome: passenger.nome.trim(),
-    })) ?? [];
-  const allPassengers = [...passageiros, ...manualPassageiros].filter(
-    (passenger) => passenger.nome,
-  );
+  const allPassengers = passageiros.filter((passenger) => passenger.nome);
   const documentNumber =
     contratante?.cpf ??
     contratante?.passaporte ??
-    firstNonEmpty(input.manualContratanteDocumento) ??
     firstNonEmpty(allPassengers[0]?.documento) ??
     "Não informado";
-  const documentoLabel =
-    firstNonEmpty(input.manualContratanteDocumentoLabel) ??
-    inferDocumentLabel(documentNumber);
+  const documentoLabel = inferDocumentLabel(documentNumber);
 
   return {
     assinatura,
@@ -236,10 +254,7 @@ function buildPayloadFromManual(
       documentoLabel,
       estado: input.estado.trim().toUpperCase(),
       logradouro: input.logradouro.trim(),
-      nome:
-        contratante?.nome ??
-        firstNonEmpty(input.manualContratanteNome) ??
-        "Contratante",
+      nome: contratante?.nome ?? "Contratante",
       numero: input.numero.trim(),
     },
     orcamento: {
@@ -252,10 +267,7 @@ function buildPayloadFromManual(
           {
             dataNascimento: contratante?.nascimento ?? null,
             documento: contratante?.cpf ?? contratante?.passaporte ?? null,
-            nome:
-              contratante?.nome ??
-              firstNonEmpty(input.manualContratanteNome) ??
-              "Contratante",
+            nome: contratante?.nome ?? "Contratante",
           },
         ],
     reserva: {
