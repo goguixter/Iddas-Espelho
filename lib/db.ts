@@ -110,6 +110,55 @@ function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_vendas_orcamento_identificador
       ON vendas (orcamento_identificador);
 
+    CREATE TABLE IF NOT EXISTS companhias (
+      id TEXT PRIMARY KEY,
+      iata TEXT,
+      companhia TEXT,
+      nome TEXT,
+      raw_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      synced_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_companhias_iata
+      ON companhias (iata);
+
+    CREATE TABLE IF NOT EXISTS voos (
+      id TEXT PRIMARY KEY,
+      orcamento_id TEXT,
+      orcamento_identificador TEXT,
+      titulo_orcamento TEXT,
+      tipo_trecho TEXT,
+      voo TEXT,
+      companhia_id TEXT,
+      companhia_nome TEXT,
+      classe TEXT,
+      aeroporto_origem TEXT,
+      aeroporto_destino TEXT,
+      data_embarque TEXT,
+      hora_embarque TEXT,
+      data_chegada TEXT,
+      hora_chegada TEXT,
+      duracao TEXT,
+      localizador TEXT,
+      numero_compra TEXT,
+      observacao TEXT,
+      cliente_pessoa_id TEXT,
+      qtd_paradas TEXT,
+      bagagem_bolsa TEXT,
+      bagagem_demao TEXT,
+      bagagem_despachada TEXT,
+      raw_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      synced_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_voos_orcamento_id
+      ON voos (orcamento_id);
+
+    CREATE INDEX IF NOT EXISTS idx_voos_orcamento_identificador
+      ON voos (orcamento_identificador);
+
     CREATE TABLE IF NOT EXISTS solicitacoes (
       id TEXT PRIMARY KEY,
       nome TEXT,
@@ -248,6 +297,32 @@ function runMigrations() {
       cliente_nome_db TEXT,
       solicitacao_nome TEXT,
       venda_raw_json TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS voos_projection (
+      id TEXT PRIMARY KEY,
+      orcamento_id TEXT,
+      orcamento_identificador TEXT,
+      companhia_id TEXT,
+      companhia_nome TEXT,
+      companhia_iata TEXT,
+      titulo_orcamento TEXT,
+      tipo_trecho TEXT,
+      classe TEXT,
+      aeroporto_origem TEXT,
+      aeroporto_destino TEXT,
+      data_embarque TEXT,
+      hora_embarque TEXT,
+      data_chegada TEXT,
+      hora_chegada TEXT,
+      duracao TEXT,
+      localizador TEXT,
+      observacao TEXT,
+      cliente_pessoa_id TEXT,
+      cliente_nome_db TEXT,
+      solicitacao_nome TEXT,
+      raw_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS document_records (
@@ -422,6 +497,22 @@ function runMigrations() {
     "CREATE INDEX IF NOT EXISTS idx_vendas_projection_orcamento_id ON vendas_projection (orcamento_id)",
   );
   ensureIndex(
+    "idx_voos_orcamento_id",
+    "CREATE INDEX IF NOT EXISTS idx_voos_orcamento_id ON voos (orcamento_id)",
+  );
+  ensureIndex(
+    "idx_voos_orcamento_identificador",
+    "CREATE INDEX IF NOT EXISTS idx_voos_orcamento_identificador ON voos (orcamento_identificador)",
+  );
+  ensureIndex(
+    "idx_voos_projection_updated_at",
+    "CREATE INDEX IF NOT EXISTS idx_voos_projection_updated_at ON voos_projection (updated_at, id)",
+  );
+  ensureIndex(
+    "idx_voos_projection_orcamento_id",
+    "CREATE INDEX IF NOT EXISTS idx_voos_projection_orcamento_id ON voos_projection (orcamento_id)",
+  );
+  ensureIndex(
     "idx_document_records_entity",
     "CREATE INDEX IF NOT EXISTS idx_document_records_entity ON document_records (entity_type, entity_id, created_at DESC)",
   );
@@ -536,6 +627,7 @@ function refreshProjectionTables() {
   refreshOrcamentosProjectionByIds(readAllIds("orcamentos"));
   refreshSolicitacoesProjectionByIds(readAllIds("solicitacoes"));
   refreshVendasProjectionByIds(readAllIds("vendas"));
+  refreshVoosProjectionByIds(readAllIds("voos"));
 }
 
 export function refreshOrcamentosProjectionByIds(ids: string[]) {
@@ -778,6 +870,95 @@ export function refreshVendasProjectionBySolicitacaoIds(solicitacaoIds: string[]
   refreshVendasProjectionByOrcamentoIds(orcamentoIds);
 }
 
+export function refreshVoosProjectionByIds(ids: string[]) {
+  replaceProjectionRows({
+    deleteSql: "DELETE FROM voos_projection WHERE id IN",
+    ids,
+    insertSql: `
+      INSERT INTO voos_projection (
+        id,
+        orcamento_id,
+        orcamento_identificador,
+        companhia_id,
+        companhia_nome,
+        companhia_iata,
+        titulo_orcamento,
+        tipo_trecho,
+        classe,
+        aeroporto_origem,
+        aeroporto_destino,
+        data_embarque,
+        hora_embarque,
+        data_chegada,
+        hora_chegada,
+        duracao,
+        localizador,
+        observacao,
+        cliente_pessoa_id,
+        cliente_nome_db,
+        solicitacao_nome,
+        raw_json,
+        updated_at
+      )
+      SELECT
+        v.id,
+        v.orcamento_id,
+        v.orcamento_identificador,
+        v.companhia_id,
+        COALESCE(c.companhia, c.nome, v.companhia_nome),
+        c.iata,
+        v.titulo_orcamento,
+        v.tipo_trecho,
+        v.classe,
+        v.aeroporto_origem,
+        v.aeroporto_destino,
+        v.data_embarque,
+        v.hora_embarque,
+        v.data_chegada,
+        v.hora_chegada,
+        v.duracao,
+        v.localizador,
+        v.observacao,
+        o.cliente_pessoa_id,
+        COALESCE(
+          p.nome,
+          (
+            SELECT sl.nome
+            FROM solicitacoes sl
+            WHERE sl.linked_orcamento_id = o.id
+            ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+            LIMIT 1
+          )
+        ),
+        (
+          SELECT sl.nome
+          FROM solicitacoes sl
+          WHERE sl.linked_orcamento_id = o.id
+          ORDER BY datetime(sl.updated_at) DESC, sl.id DESC
+          LIMIT 1
+        ),
+        v.raw_json,
+        v.updated_at
+      FROM voos v
+      LEFT JOIN companhias c ON c.id = v.companhia_id
+      LEFT JOIN orcamentos o ON o.id = v.orcamento_id
+      LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+      WHERE v.id IN
+    `,
+  });
+}
+
+export function refreshVoosProjectionByOrcamentoIds(orcamentoIds: string[]) {
+  refreshVoosProjectionByIds(readIdsByQuery(
+    `
+      SELECT id
+      FROM voos
+      WHERE orcamento_id IN
+    `,
+    orcamentoIds,
+  ));
+}
+
 function replaceProjectionRows(input: {
   deleteSql: string;
   ids: string[];
@@ -795,7 +976,7 @@ function replaceProjectionRows(input: {
   })();
 }
 
-function readAllIds(table: "orcamentos" | "solicitacoes" | "vendas") {
+function readAllIds(table: "orcamentos" | "solicitacoes" | "vendas" | "voos") {
   return (db.prepare(`SELECT id FROM ${table}`).all() as Array<{ id: string }>).map(
     (row) => row.id,
   );

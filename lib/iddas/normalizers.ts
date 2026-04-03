@@ -71,6 +71,46 @@ export type VendaRecord = {
   updated_at: string;
 };
 
+export type CompanhiaRecord = {
+  companhia: string | null;
+  iata: string | null;
+  id: string;
+  nome: string | null;
+  raw_json: string;
+  synced_at: string;
+  updated_at: string;
+};
+
+export type VooRecord = {
+  aeroporto_destino: string | null;
+  aeroporto_origem: string | null;
+  bagagem_bolsa: string | null;
+  bagagem_demao: string | null;
+  bagagem_despachada: string | null;
+  classe: string | null;
+  cliente_pessoa_id: string | null;
+  companhia_id: string | null;
+  companhia_nome: string | null;
+  data_chegada: string | null;
+  data_embarque: string | null;
+  duracao: string | null;
+  hora_chegada: string | null;
+  hora_embarque: string | null;
+  id: string;
+  localizador: string | null;
+  numero_compra: string | null;
+  observacao: string | null;
+  orcamento_id: string;
+  orcamento_identificador: string | null;
+  qtd_paradas: string | null;
+  raw_json: string;
+  synced_at: string;
+  tipo_trecho: string | null;
+  titulo_orcamento: string | null;
+  updated_at: string;
+  voo: string | null;
+};
+
 export type SolicitacaoRecord = {
   adultos: string | null;
   criancas: string | null;
@@ -415,6 +455,77 @@ export function normalizeVenda(
       readString(detail.data_alteracao) ??
       syncedAt,
     synced_at: syncedAt,
+  };
+}
+
+export function normalizeCompanhia(detail: IddasObject, syncedAt: string): CompanhiaRecord {
+  return {
+    companhia:
+      readString(detail.companhia) ??
+      readString(detail.nome),
+    iata: readString(detail.iata),
+    id: requireString(readId(detail), "companhia.id"),
+    nome: readString(detail.nome),
+    raw_json: JSON.stringify(detail),
+    synced_at: syncedAt,
+    updated_at:
+      readString(detail.updated_at) ??
+      readString(detail.data_alteracao) ??
+      syncedAt,
+  };
+}
+
+export function normalizeVoo(detail: IddasObject, syncedAt: string): VooRecord {
+  return {
+    aeroporto_destino: readString(detail.aeroporto_destino),
+    aeroporto_origem: readString(detail.aeroporto_origem),
+    bagagem_bolsa: readString(detail.bagagem_bolsa),
+    bagagem_demao: readString(detail.bagagem_demao),
+    bagagem_despachada: readString(detail.bagagem_despachada),
+    classe: readString(detail.classe),
+    cliente_pessoa_id: pickReferenceId(detail, [
+      "cliente",
+      "cliente_id",
+      "cliente.id",
+      "cliente.pessoa_id",
+      "pessoa",
+      "pessoa.id",
+    ]),
+    companhia_id:
+      readString(detail.id_companhia) ??
+      readString(detail.companhia_id),
+    companhia_nome:
+      readString(detail.companhia) ??
+      readString(detail.nome_companhia),
+    data_chegada: readString(detail.data_chegada),
+    data_embarque: readString(detail.data_embarque),
+    duracao: readString(detail.duracao),
+    hora_chegada: readString(detail.hora_chegada),
+    hora_embarque: readString(detail.hora_embarque),
+    id: requireString(readId(detail), "voo.id"),
+    localizador: readString(detail.localizador),
+    numero_compra: readString(detail.numero_compra),
+    observacao: readString(detail.observacao),
+    orcamento_id:
+      requireString(
+        readString(detail.id_orcamento) ??
+          readString(detail.orcamento_id) ??
+          readString(detail.orcamento),
+        "voo.id_orcamento",
+      ),
+    orcamento_identificador:
+      readString(detail.identificador_orcamento) ??
+      readString(detail.orcamento_identificador),
+    qtd_paradas: readString(detail.qtd_paradas),
+    raw_json: JSON.stringify(detail),
+    synced_at: syncedAt,
+    tipo_trecho: readString(detail.tipo_trecho),
+    titulo_orcamento: readString(detail.titulo_orcamento),
+    updated_at:
+      readString(detail.updated_at) ??
+      readString(detail.data_alteracao) ??
+      syncedAt,
+    voo: readString(detail.voo),
   };
 }
 

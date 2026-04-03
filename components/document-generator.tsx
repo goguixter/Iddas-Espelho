@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   FileText,
@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type {
+  RecentFornecedorDocumentOption,
   PessoaDocumentSource,
   RecentOrcamentoDocumentOption,
   RecentPessoaDocumentOption,
@@ -203,6 +204,343 @@ function toShortPersonName(value: string | null | undefined) {
   }
 
   return `${normalized[0]} ${normalized[normalized.length - 1]}`;
+}
+
+function ControlButton({
+  children,
+  icon,
+  onClick,
+}: {
+  children: string;
+  icon: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function RemovableTag({
+  children,
+  onRemove,
+}: {
+  children: ReactNode;
+  onRemove: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+      {children}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </span>
+  );
+}
+
+function SectionDivider({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={`space-y-2 border-t border-[var(--color-line)] pt-4 ${className}`}>{children}</div>;
+}
+
+function PreviewPanel({
+  emptyMessage,
+  html,
+  loading,
+  title,
+}: {
+  emptyMessage: string;
+  html: string;
+  loading: boolean;
+  title: string;
+}) {
+  return (
+    <section className="flex min-h-0 flex-col rounded-[24px] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+      <div className="flex items-center justify-between gap-3 text-[var(--color-ink)]">
+        <div className="flex items-center gap-2">
+          <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
+          <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">{title}</h3>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-[var(--color-ink)]">Contrato v1</span>
+          {loading ? (
+            <span className="inline-flex items-center gap-2 text-xs text-[var(--color-muted)]">
+              <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
+              Atualizando
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)]">
+        {html ? (
+          <iframe
+            title="Prévia do contrato"
+            srcDoc={html}
+            className="h-full w-full bg-white"
+            style={{ zoom: 0.84 }}
+          />
+        ) : (
+          <div className="flex h-full min-h-[720px] items-center justify-center px-6 text-center text-sm text-[var(--color-muted)]">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PersonSearchModal({
+  mode,
+  onClose,
+  onSearchChange,
+  onSelect,
+  results,
+  search,
+}: {
+  mode: "contratante" | "passageiro";
+  onClose: () => void;
+  onSearchChange: (value: string) => void;
+  onSelect: (option: RecentPessoaDocumentOption) => void;
+  results: RecentPessoaDocumentOption[];
+  search: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm">
+      <div className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgba(15,23,42,0.4)]">
+        <div className="flex items-center justify-between gap-4 border-b border-[var(--color-line)] px-6 py-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
+              {mode === "contratante" ? "Contratante" : "Passageiro"}
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
+              {mode === "contratante" ? "Buscar contratante" : "Buscar passageiro"}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col px-6 py-5">
+          <SearchField
+            label={mode === "contratante" ? "Buscar contratante" : "Buscar passageiro"}
+            labelClassName="text-[var(--color-accent)]"
+            inputClassName="bg-[var(--color-panel)]"
+            value={search}
+            onChange={onSearchChange}
+            placeholder="Digite nome ou CPF"
+          />
+
+          <div className="table-scroll mt-4 min-h-0 flex-1 overflow-auto pr-1">
+            <div className="space-y-2">
+              {results.map((option) => (
+                <button
+                  key={`person-search-${option.id}`}
+                  type="button"
+                  onClick={() => onSelect(option)}
+                  className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-transparent bg-[var(--color-panel)] px-4 py-3 text-left transition hover:border-[var(--color-accent)]"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-[var(--color-ink)]">{option.nome ?? "Sem nome"}</p>
+                    <p className="mt-1 text-xs text-[var(--color-muted)]">{option.cpf ?? option.id}</p>
+                  </div>
+                  <span className="text-xs text-[var(--color-faint)]">{option.cidade ?? "Sem cidade"}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ServiceModal({
+  form,
+  onClose,
+  onFieldChange,
+}: {
+  form: FormState;
+  onClose: () => void;
+  onFieldChange: (key: keyof FormState, value: string) => void;
+}) {
+  const [supplierSearch, setSupplierSearch] = useState(form.fornecedor);
+  const [supplierResults, setSupplierResults] = useState<RecentFornecedorDocumentOption[]>([]);
+  const selectedSupplier = form.fornecedor.trim();
+  const hasSupplierQuery = supplierSearch.trim().length > 0 && supplierSearch.trim() !== selectedSupplier;
+
+  useEffect(() => {
+    let active = true;
+    const timeoutId = window.setTimeout(() => {
+      fetchJson<RecentFornecedorDocumentOption[]>(
+        `/api/documentos/fornecedores?q=${encodeURIComponent(supplierSearch.trim())}`,
+      )
+        .then((results) => {
+          if (active) {
+            setSupplierResults(results);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setSupplierResults([]);
+          }
+        });
+    }, 180);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [supplierSearch]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm">
+      <div className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgba(15,23,42,0.4)]">
+        <div className="flex items-center justify-between gap-4 border-b border-[var(--color-line)] px-6 py-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
+              Dados do serviço
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
+              Definir informações do contrato
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="table-scroll min-h-0 flex-1 overflow-auto px-6 py-5 pr-5">
+          <div className="grid gap-3">
+            <div className="grid gap-3 md:grid-cols-[0.4fr_0.6fr]">
+              <InputField
+                label="Localizador da reserva"
+                value={form.localizadorReserva}
+                onChange={(value) => onFieldChange("localizadorReserva", value)}
+              />
+              <label className="block">
+                <span className="text-xs uppercase tracking-[0.16em] text-[var(--color-faint)]">
+                  Fornecedor
+                </span>
+                <div className="relative mt-2">
+                  {selectedSupplier ? (
+                    <div className="flex min-h-[48px] w-full items-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2">
+                      <RemovableTag
+                        onRemove={() => {
+                          setSupplierSearch("");
+                          onFieldChange("fornecedor", "");
+                          setSupplierResults([]);
+                        }}
+                      >
+                        {selectedSupplier}
+                      </RemovableTag>
+                    </div>
+                  ) : (
+                    <>
+                      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-faint)]" />
+                      <input
+                        className="w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] py-3 pl-11 pr-4 text-sm text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)]"
+                        value={supplierSearch}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSupplierSearch(value);
+                          if (!value.trim()) {
+                            onFieldChange("fornecedor", "");
+                            setSupplierResults([]);
+                          }
+                        }}
+                        placeholder="Buscar companhia ou fornecedor"
+                      />
+                    </>
+                  )}
+                  {hasSupplierQuery ? (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] shadow-[0_18px_50px_rgba(15,23,42,0.42)]">
+                      {supplierResults.length > 0 ? (
+                        <div className="table-scroll max-h-44 overflow-auto p-2 pr-1">
+                          <div className="space-y-2">
+                            {supplierResults.map((option) => (
+                              <button
+                              key={`supplier-${option.tipo}-${option.id}`}
+                              type="button"
+                              onClick={() => {
+                                setSupplierSearch(option.nome);
+                                onFieldChange("fornecedor", option.nome);
+                                setSupplierResults([]);
+                              }}
+                                className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-transparent bg-[var(--color-surface)] px-3 py-2.5 text-left transition hover:border-[var(--color-accent)]"
+                              >
+                                <div>
+                                  <p className="text-sm font-medium text-[var(--color-ink)]">{option.nome}</p>
+                                  <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--color-muted)]">
+                                    {option.tipo === "companhia" ? "Companhia aérea" : "Fornecedor"}
+                                  </p>
+                                </div>
+                                <span className="text-xs text-[var(--color-faint)]">
+                                  {option.hint ?? "—"}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-[var(--color-muted)]">
+                          Nenhum fornecedor encontrado.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </label>
+            </div>
+            <InputField
+              label="Serviço contratado"
+              value={form.servicoContratado}
+              onChange={(value) => onFieldChange("servicoContratado", value)}
+            />
+            <TextAreaField
+              label="Condições tarifárias"
+              value={form.condicoesTarifarias}
+              onChange={(value) => onFieldChange("condicoesTarifarias", value)}
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-[var(--color-line)] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105"
+          >
+            Salvar dados do serviço
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function DocumentGenerator({
@@ -613,154 +951,94 @@ export function DocumentGenerator({
 
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2 text-[var(--color-ink)]">
-                    <button
-                      type="button"
-                      onClick={() => openPersonModal("contratante")}
-                      className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                    >
-                      <UserRound className="h-4 w-4" />
+                    <ControlButton icon={<UserRound className="h-4 w-4" />} onClick={() => openPersonModal("contratante")}>
                       Contratante
-                    </button>
+                    </ControlButton>
 
                     {form.pessoaContratanteId ? (
-                      <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                      <RemovableTag
+                        onRemove={() => {
+                          setError("");
+                          updateField("pessoaContratanteId", "");
+                          setSelectedPassengerPeople((current) =>
+                            current.filter((item) => item.id !== form.pessoaContratanteId),
+                          );
+                        }}
+                      >
                         {toShortPersonName(form.manualContratanteNome || form.pessoaContratanteId)}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setError("");
-                            updateField("pessoaContratanteId", "");
-                            setSelectedPassengerPeople((current) =>
-                              current.filter((item) => item.id !== form.pessoaContratanteId),
-                            );
-                          }}
-                          className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      </RemovableTag>
                     ) : null}
                   </div>
                 </div>
 
-                <div className="space-y-2 border-t border-[var(--color-line)] pt-4">
+                <SectionDivider>
                   <div className="flex flex-wrap items-center gap-2 text-[var(--color-ink)]">
-                    <button
-                      type="button"
-                      onClick={() => openPersonModal("passageiro")}
-                      className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                    >
-                      <Users className="h-4 w-4" />
+                    <ControlButton icon={<Users className="h-4 w-4" />} onClick={() => openPersonModal("passageiro")}>
                       Passageiros
-                    </button>
+                    </ControlButton>
 
                     <div className="table-scroll max-h-20 overflow-auto pr-1">
                       <div className="flex flex-wrap gap-2">
                         {selectedPassengerPeople
                           .filter((person) => person.id !== form.pessoaContratanteId)
                           .map((person) => (
-                            <span
+                            <RemovableTag
                               key={person.id}
-                              className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]"
+                              onRemove={() =>
+                                setSelectedPassengerPeople((current) =>
+                                  current.filter((item) => item.id !== person.id),
+                                )
+                              }
                             >
                               {toShortPersonName(person.nome ?? person.id)}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setSelectedPassengerPeople((current) =>
-                                    current.filter((item) => item.id !== person.id),
-                                  )
-                                }
-                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
+                            </RemovableTag>
                           ))}
                       </div>
                     </div>
                   </div>
-                </div>
+                </SectionDivider>
 
                 {serviceSummary().length > 0 ? (
-                  <div className="space-y-2 border-t border-[var(--color-line)] pt-4">
+                  <SectionDivider>
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setServiceModalOpen(true)}
-                        className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                      >
-                        <FileText className="h-4 w-4" />
+                      <ControlButton icon={<FileText className="h-4 w-4" />} onClick={() => setServiceModalOpen(true)}>
                         Dados do serviço
-                      </button>
+                      </ControlButton>
 
                       <div className="table-scroll max-h-20 overflow-auto pr-1">
                         <div className="flex flex-wrap gap-2">
                           {form.localizadorReserva.trim() ? (
-                            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                            <RemovableTag onRemove={() => updateField("localizadorReserva", "")}>
                               Localizador: {form.localizadorReserva.trim()}
-                              <button
-                                type="button"
-                                onClick={() => updateField("localizadorReserva", "")}
-                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
+                            </RemovableTag>
                           ) : null}
                           {form.servicoContratado.trim() ? (
-                            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                            <RemovableTag onRemove={() => updateField("servicoContratado", "")}>
                               Serviço: {form.servicoContratado.trim()}
-                              <button
-                                type="button"
-                                onClick={() => updateField("servicoContratado", "")}
-                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
+                            </RemovableTag>
                           ) : null}
                           {form.fornecedor.trim() ? (
-                            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                            <RemovableTag onRemove={() => updateField("fornecedor", "")}>
                               Fornecedor: {form.fornecedor.trim()}
-                              <button
-                                type="button"
-                                onClick={() => updateField("fornecedor", "")}
-                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
+                            </RemovableTag>
                           ) : null}
                           {form.condicoesTarifarias.trim() ? (
-                            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                            <RemovableTag onRemove={() => updateField("condicoesTarifarias", "")}>
                               Condições definidas
-                              <button
-                                type="button"
-                                onClick={() => updateField("condicoesTarifarias", "")}
-                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
+                            </RemovableTag>
                           ) : null}
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </SectionDivider>
                 ) : (
-                  <div className="space-y-2 border-t border-[var(--color-line)] pt-4">
+                  <SectionDivider>
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setServiceModalOpen(true)}
-                        className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                      >
-                        <FileText className="h-4 w-4" />
+                      <ControlButton icon={<FileText className="h-4 w-4" />} onClick={() => setServiceModalOpen(true)}>
                         Dados do serviço
-                      </button>
+                      </ControlButton>
                     </div>
-                  </div>
+                  </SectionDivider>
                 )}
 
                 {error ? (
@@ -794,148 +1072,32 @@ export function DocumentGenerator({
             )}
           </section>
 
-          <section className="flex min-h-0 flex-col rounded-[24px] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-            <div className="flex items-center justify-between gap-3 text-[var(--color-ink)]">
-              <div className="flex items-center gap-2">
-                <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
-                <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                  {form.mode === "orcamento" ? "Preview automático" : "Preview do contrato"}
-                </h3>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-[var(--color-ink)]">Contrato v1</span>
-                {loadingPreview ? (
-                  <span className="inline-flex items-center gap-2 text-xs text-[var(--color-muted)]">
-                    <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
-                    Atualizando
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)]">
-              {previewHtml ? (
-                <iframe
-                  title="Prévia do contrato"
-                  srcDoc={previewHtml}
-                  className="h-full w-full bg-white"
-                  style={{ zoom: 0.84 }}
-                />
-              ) : (
-                <div className="flex h-full min-h-[720px] items-center justify-center px-6 text-center text-sm text-[var(--color-muted)]">
-                  {form.mode === "orcamento"
-                    ? "Selecione um orçamento para gerar a prévia automática do contrato."
-                    : "Selecione o contratante e preencha os dados do serviço para gerar a prévia do contrato."}
-                </div>
-              )}
-            </div>
-          </section>
+          <PreviewPanel
+            emptyMessage={
+              form.mode === "orcamento"
+                ? "Selecione um orçamento para gerar a prévia automática do contrato."
+                : "Selecione o contratante e preencha os dados do serviço para gerar a prévia do contrato."
+            }
+            html={previewHtml}
+            loading={loadingPreview}
+            title={form.mode === "orcamento" ? "Preview automático" : "Preview do contrato"}
+          />
         </div>
       </form>
 
       {personModalMode ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm">
-          <div className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgba(15,23,42,0.4)]">
-            <div className="flex items-center justify-between gap-4 border-b border-[var(--color-line)] px-6 py-5">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
-                  {personModalMode === "contratante" ? "Contratante" : "Passageiro"}
-                </p>
-                <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
-                  {personModalMode === "contratante" ? "Buscar contratante" : "Buscar passageiro"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={closePersonModal}
-                className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col px-6 py-5">
-              <SearchField
-                label={personModalMode === "contratante" ? "Buscar contratante" : "Buscar passageiro"}
-                labelClassName="text-[var(--color-accent)]"
-                inputClassName="bg-[var(--color-panel)]"
-                value={personSearch}
-                onChange={setPersonSearch}
-                placeholder="Digite nome ou CPF"
-              />
-
-              <div className="table-scroll mt-4 min-h-0 flex-1 overflow-auto pr-1">
-                <div className="space-y-2">
-                  {personSearchResults.map((option) => (
-                    <button
-                      key={`person-search-${option.id}`}
-                      type="button"
-                      onClick={() => handlePersonSelection(option)}
-                      className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-transparent bg-[var(--color-panel)] px-4 py-3 text-left transition hover:border-[var(--color-accent)]"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-[var(--color-ink)]">
-                          {option.nome ?? "Sem nome"}
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--color-muted)]">
-                          {option.cpf ?? option.id}
-                        </p>
-                      </div>
-                      <span className="text-xs text-[var(--color-faint)]">
-                        {option.cidade ?? "Sem cidade"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PersonSearchModal
+          mode={personModalMode}
+          onClose={closePersonModal}
+          onSearchChange={setPersonSearch}
+          onSelect={handlePersonSelection}
+          results={personSearchResults}
+          search={personSearch}
+        />
       ) : null}
 
       {serviceModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm">
-          <div className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgba(15,23,42,0.4)]">
-            <div className="flex items-center justify-between gap-4 border-b border-[var(--color-line)] px-6 py-5">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
-                  Dados do serviço
-                </p>
-                <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
-                  Definir informações do contrato
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setServiceModalOpen(false)}
-                className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="table-scroll min-h-0 flex-1 overflow-auto px-6 py-5 pr-5">
-              <div className="grid gap-3">
-                <div className="grid gap-3 md:grid-cols-[0.4fr_0.6fr]">
-                  <InputField label="Localizador da reserva" value={form.localizadorReserva} onChange={(value) => updateField("localizadorReserva", value)} />
-                  <InputField label="Fornecedor" value={form.fornecedor} onChange={(value) => updateField("fornecedor", value)} />
-                </div>
-                <InputField label="Serviço contratado" value={form.servicoContratado} onChange={(value) => updateField("servicoContratado", value)} />
-                <TextAreaField label="Condições tarifárias" value={form.condicoesTarifarias} onChange={(value) => updateField("condicoesTarifarias", value)} />
-              </div>
-            </div>
-
-            <div className="border-t border-[var(--color-line)] px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setServiceModalOpen(false)}
-                className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105"
-              >
-                Salvar dados do serviço
-              </button>
-            </div>
-          </div>
-        </div>
+        <ServiceModal form={form} onClose={() => setServiceModalOpen(false)} onFieldChange={updateField} />
       ) : null}
     </section>
   );

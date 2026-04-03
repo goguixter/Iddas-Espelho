@@ -9,6 +9,7 @@ import {
   Database,
   FileText,
   LayoutDashboard,
+  Plane,
   Users,
   WalletCards,
 } from "lucide-react";
@@ -18,6 +19,7 @@ const items = [
   { href: "/documentos", label: "Documentos", icon: FileText },
   { href: "/solicitacoes", label: "Solicitações", icon: ClipboardList },
   { href: "/orcamentos", label: "Orçamentos", icon: Database },
+  { href: "/voos", label: "Voos", icon: Plane },
   { href: "/pessoas", label: "Pessoas", icon: Users },
   { href: "/vendas", label: "Vendas", icon: WalletCards },
 ];

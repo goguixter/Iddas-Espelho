@@ -9,6 +9,8 @@ import {
   refreshVendasProjectionByOrcamentoIds,
   refreshVendasProjectionByPessoaIds,
   refreshVendasProjectionBySolicitacaoIds,
+  refreshVoosProjectionByIds,
+  refreshVoosProjectionByOrcamentoIds,
 } from "@/lib/db";
 import { env } from "@/lib/env";
 import { pickReferenceId, readId, readString } from "@/lib/iddas/accessors";
@@ -24,12 +26,14 @@ import {
 import {
   normalizeOrcamento,
   normalizeOrcamentoSummary,
+  normalizeCompanhia,
   normalizePessoa,
   normalizePessoaSummary,
   normalizeSolicitacao,
   normalizeSolicitacaoSummary,
   normalizeSituacao,
   normalizeVenda,
+  normalizeVoo,
 } from "@/lib/iddas/normalizers";
 import { logSync } from "@/lib/sync/logger";
 import {
@@ -420,6 +424,122 @@ const upsertSituacao = db.prepare(`
     ordem = excluded.ordem,
     situacao_final = excluded.situacao_final,
     situacao_padrao = excluded.situacao_padrao,
+    raw_json = excluded.raw_json,
+    updated_at = excluded.updated_at,
+    synced_at = excluded.synced_at
+`);
+
+const upsertCompanhia = db.prepare(`
+  INSERT INTO companhias (
+    id,
+    iata,
+    companhia,
+    nome,
+    raw_json,
+    updated_at,
+    synced_at
+  )
+  VALUES (
+    @id,
+    @iata,
+    @companhia,
+    @nome,
+    @raw_json,
+    @updated_at,
+    @synced_at
+  )
+  ON CONFLICT(id) DO UPDATE SET
+    iata = excluded.iata,
+    companhia = excluded.companhia,
+    nome = excluded.nome,
+    raw_json = excluded.raw_json,
+    updated_at = excluded.updated_at,
+    synced_at = excluded.synced_at
+`);
+
+const upsertVoo = db.prepare(`
+  INSERT INTO voos (
+    id,
+    orcamento_id,
+    orcamento_identificador,
+    titulo_orcamento,
+    tipo_trecho,
+    voo,
+    companhia_id,
+    companhia_nome,
+    classe,
+    aeroporto_origem,
+    aeroporto_destino,
+    data_embarque,
+    hora_embarque,
+    data_chegada,
+    hora_chegada,
+    duracao,
+    localizador,
+    numero_compra,
+    observacao,
+    cliente_pessoa_id,
+    qtd_paradas,
+    bagagem_bolsa,
+    bagagem_demao,
+    bagagem_despachada,
+    raw_json,
+    updated_at,
+    synced_at
+  )
+  VALUES (
+    @id,
+    @orcamento_id,
+    @orcamento_identificador,
+    @titulo_orcamento,
+    @tipo_trecho,
+    @voo,
+    @companhia_id,
+    @companhia_nome,
+    @classe,
+    @aeroporto_origem,
+    @aeroporto_destino,
+    @data_embarque,
+    @hora_embarque,
+    @data_chegada,
+    @hora_chegada,
+    @duracao,
+    @localizador,
+    @numero_compra,
+    @observacao,
+    @cliente_pessoa_id,
+    @qtd_paradas,
+    @bagagem_bolsa,
+    @bagagem_demao,
+    @bagagem_despachada,
+    @raw_json,
+    @updated_at,
+    @synced_at
+  )
+  ON CONFLICT(id) DO UPDATE SET
+    orcamento_id = excluded.orcamento_id,
+    orcamento_identificador = excluded.orcamento_identificador,
+    titulo_orcamento = excluded.titulo_orcamento,
+    tipo_trecho = excluded.tipo_trecho,
+    voo = excluded.voo,
+    companhia_id = excluded.companhia_id,
+    companhia_nome = excluded.companhia_nome,
+    classe = excluded.classe,
+    aeroporto_origem = excluded.aeroporto_origem,
+    aeroporto_destino = excluded.aeroporto_destino,
+    data_embarque = excluded.data_embarque,
+    hora_embarque = excluded.hora_embarque,
+    data_chegada = excluded.data_chegada,
+    hora_chegada = excluded.hora_chegada,
+    duracao = excluded.duracao,
+    localizador = excluded.localizador,
+    numero_compra = excluded.numero_compra,
+    observacao = excluded.observacao,
+    cliente_pessoa_id = excluded.cliente_pessoa_id,
+    qtd_paradas = excluded.qtd_paradas,
+    bagagem_bolsa = excluded.bagagem_bolsa,
+    bagagem_demao = excluded.bagagem_demao,
+    bagagem_despachada = excluded.bagagem_despachada,
     raw_json = excluded.raw_json,
     updated_at = excluded.updated_at,
     synced_at = excluded.synced_at
@@ -1024,6 +1144,9 @@ async function runOrcamentosSync(input?: {
   let queuedOrcamentos = 0;
   let reconciledCount = 0;
   const touchedOrcamentoIds = new Set<string>();
+  const touchedVooIds = new Set<string>();
+  let voosSynced = 0;
+  let companhiasSynced = 0;
 
   try {
     logSync("info", "sync.started", {
@@ -1042,6 +1165,67 @@ async function runOrcamentosSync(input?: {
     logSync("info", "sync.situacoes.page", { page: 1, returned: situacoes.length });
     for (const situacao of situacoes) {
       upsertSituacao.run(normalizeSituacao(situacao, now));
+    }
+
+    updateSyncStateRecord(scope, {
+      current_stage: "Sincronizando companhias aéreas",
+      current_page: 1,
+    });
+
+    for (let companhiaPage = 1; companhiaPage <= env.IDDAS_SYNC_MAX_PAGES; companhiaPage += 1) {
+      throwIfCancelRequested(scope);
+
+      const companhias = await fetchIddasList("companhia", companhiaPage, 100);
+      logSync("info", "sync.companhias.page", { page: companhiaPage, returned: companhias.length });
+
+      if (companhias.length === 0) {
+        break;
+      }
+
+      for (const companhia of companhias) {
+        upsertCompanhia.run(normalizeCompanhia(companhia, now));
+        companhiasSynced += 1;
+      }
+
+      if (companhias.length < 100) {
+        break;
+      }
+    }
+
+    updateSyncStateRecord(scope, {
+      current_stage: "Sincronizando voos",
+      current_page: 1,
+      secondary_created: 0,
+      secondary_synced: companhiasSynced,
+    });
+
+    for (let vooPage = 1; vooPage <= env.IDDAS_SYNC_MAX_PAGES; vooPage += 1) {
+      throwIfCancelRequested(scope);
+
+      const voos = await fetchIddasList("voo", vooPage, env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE);
+      logSync("info", "sync.voos.page", { page: vooPage, returned: voos.length });
+
+      if (voos.length === 0) {
+        break;
+      }
+
+      for (const voo of voos) {
+        const normalized = normalizeVoo(voo, now);
+        upsertVoo.run(normalized);
+        voosSynced += 1;
+        touchedVooIds.add(normalized.id);
+        touchedOrcamentoIds.add(normalized.orcamento_id);
+      }
+
+      updateSyncStateRecord(scope, {
+        current_page: vooPage,
+        related_created: 0,
+        related_synced: voosSynced,
+      });
+
+      if (voos.length < env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE) {
+        break;
+      }
     }
 
     for (
@@ -1225,6 +1409,8 @@ async function runOrcamentosSync(input?: {
     refreshOrcamentosProjectionByIds(touchedIds);
     refreshSolicitacoesProjectionByOrcamentoIds(touchedIds);
     refreshVendasProjectionByOrcamentoIds(touchedIds);
+    refreshVoosProjectionByIds([...touchedVooIds]);
+    refreshVoosProjectionByOrcamentoIds(touchedIds);
 
     completeScopeState(scope, {
       error: null,
@@ -1237,6 +1423,10 @@ async function runOrcamentosSync(input?: {
       peopleSynced: 0,
       queuePending: readPendingIds(listPendingOrcamentoIds).length,
       reconciledSynced: reconciledCount,
+      relatedCreated: 0,
+      relatedSynced: voosSynced,
+      secondaryCreated: 0,
+      secondarySynced: companhiasSynced,
       vendasCreated: 0,
       vendasSynced: 0,
     });
@@ -1247,6 +1437,8 @@ async function runOrcamentosSync(input?: {
       orcamentos_created: orcamentosCreated,
       orcamentos_detailed: orcamentosDetailed,
       orcamentos_skipped: orcamentosSkipped,
+      voos_synced: voosSynced,
+      companhias_synced: companhiasSynced,
       reconciled: reconciledCount,
     });
 
@@ -1268,6 +1460,10 @@ async function runOrcamentosSync(input?: {
       peopleSynced: 0,
       queuePending: readPendingIds(listPendingOrcamentoIds).length,
       reconciledSynced: reconciledCount,
+      relatedCreated: 0,
+      relatedSynced: voosSynced,
+      secondaryCreated: 0,
+      secondarySynced: companhiasSynced,
       vendasCreated: 0,
       vendasSynced: 0,
     });
@@ -2041,6 +2237,10 @@ function completeScopeState(
     peopleSynced: number;
     queuePending: number;
     reconciledSynced: number;
+    relatedCreated?: number;
+    relatedSynced?: number;
+    secondaryCreated?: number;
+    secondarySynced?: number;
     vendasCreated: number;
     vendasSynced: number;
   },
@@ -2064,11 +2264,11 @@ function completeScopeState(
     people_synced: input.peopleSynced,
     queue_pending: input.queuePending,
     reconciled_synced: input.reconciledSynced,
-    related_created: input.peopleCreated,
-    related_synced: input.peopleSynced,
+    related_created: input.relatedCreated ?? input.peopleCreated,
+    related_synced: input.relatedSynced ?? input.peopleSynced,
     running_started_at: null,
-    secondary_created: input.vendasCreated,
-    secondary_synced: input.vendasSynced,
+    secondary_created: input.secondaryCreated ?? input.vendasCreated,
+    secondary_synced: input.secondarySynced ?? input.vendasSynced,
     status: "completed",
     vendas_created: input.vendasCreated,
     vendas_synced: input.vendasSynced,
@@ -2087,6 +2287,10 @@ function finishScopeWithError(
     peopleSynced: number;
     queuePending: number;
     reconciledSynced: number;
+    relatedCreated?: number;
+    relatedSynced?: number;
+    secondaryCreated?: number;
+    secondarySynced?: number;
     vendasCreated: number;
     vendasSynced: number;
   },
@@ -2113,11 +2317,11 @@ function finishScopeWithError(
     people_synced: input.peopleSynced,
     queue_pending: input.queuePending,
     reconciled_synced: input.reconciledSynced,
-    related_created: input.peopleCreated,
-    related_synced: input.peopleSynced,
+    related_created: input.relatedCreated ?? input.peopleCreated,
+    related_synced: input.relatedSynced ?? input.peopleSynced,
     running_started_at: null,
-    secondary_created: input.vendasCreated,
-    secondary_synced: input.vendasSynced,
+    secondary_created: input.secondaryCreated ?? input.vendasCreated,
+    secondary_synced: input.secondarySynced ?? input.vendasSynced,
     status: cancelled ? "cancelled" : "failed",
     vendas_created: input.vendasCreated,
     vendas_synced: input.vendasSynced,

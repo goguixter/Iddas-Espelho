@@ -3,6 +3,7 @@ import type {
   DocumentTemplateRecord,
   DocumentRecord,
   OrcamentoDocumentSource,
+  RecentFornecedorDocumentOption,
   PessoaDocumentSource,
   RecentPessoaDocumentOption,
   RecentOrcamentoDocumentOption,
@@ -213,6 +214,71 @@ export function searchPessoaDocumentOptions(query: string, limit = 20) {
     .all(like, cpfLike, limit) as RecentPessoaDocumentOption[];
 }
 
+export function searchFornecedorDocumentOptions(query: string, limit = 12) {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return [] as RecentFornecedorDocumentOption[];
+  }
+  const digits = normalizedQuery.replace(/\D/g, "");
+  const like = `%${normalizedQuery}%`;
+  const digitsLike = digits ? `%${digits}%` : like;
+
+  const pessoas = db
+    .prepare(
+      `
+        SELECT
+          id,
+          COALESCE(nome, 'Sem nome') AS nome,
+          cpf AS hint,
+          'pessoa' AS tipo,
+          updated_at
+        FROM pessoas
+        WHERE tipo_fornecedor = 'S'
+          AND (
+            COALESCE(nome, '') LIKE ?
+            OR REPLACE(REPLACE(REPLACE(COALESCE(cpf, ''), '.', ''), '-', ''), '/', '') LIKE ?
+          )
+        ORDER BY datetime(updated_at) DESC, id DESC
+        LIMIT ?
+      `,
+    )
+    .all(like, digitsLike, limit) as Array<
+      RecentFornecedorDocumentOption & { updated_at: string }
+    >;
+
+  const companhias = db
+    .prepare(
+      `
+        SELECT
+          id,
+          COALESCE(companhia, nome, 'Sem companhia') AS nome,
+          iata AS hint,
+          'companhia' AS tipo,
+          updated_at
+        FROM companhias
+        WHERE
+          COALESCE(companhia, '') LIKE ?
+          OR COALESCE(nome, '') LIKE ?
+          OR COALESCE(iata, '') LIKE ?
+        ORDER BY datetime(updated_at) DESC, id DESC
+        LIMIT ?
+      `,
+    )
+    .all(like, like, like, limit) as Array<
+      RecentFornecedorDocumentOption & { updated_at: string }
+    >;
+
+  return [...companhias, ...pessoas]
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+    .slice(0, limit)
+    .map((item) => ({
+      hint: item.hint,
+      id: item.id,
+      nome: item.nome,
+      tipo: item.tipo,
+    }));
+}
+
 export function getOrcamentoDocumentSource(
   orcamentoId: string,
 ): OrcamentoDocumentSource | null {
@@ -233,6 +299,8 @@ export function getOrcamentoDocumentSource(
           p.cidade AS pessoa_cidade,
           p.estado AS pessoa_estado,
           p.cep AS pessoa_cep,
+          COALESCE(comp.companhia, comp.nome, first_voo.companhia_nome) AS voo_fornecedor,
+          first_voo.localizador AS voo_localizador,
           sl.nome AS solicitacao_nome,
           sl.email AS solicitacao_email,
           sl.telefone AS solicitacao_telefone,
@@ -258,6 +326,16 @@ export function getOrcamentoDocumentSource(
           ) AS cliente_cpf
         FROM orcamentos o
         LEFT JOIN pessoas p ON p.id = o.cliente_pessoa_id
+        LEFT JOIN voos first_voo ON first_voo.id = (
+          SELECT inner_v.id
+          FROM voos inner_v
+          WHERE inner_v.orcamento_id = o.id
+          ORDER BY date(COALESCE(inner_v.data_embarque, '9999-12-31')) ASC,
+                   time(COALESCE(inner_v.hora_embarque, '23:59:59')) ASC,
+                   inner_v.id ASC
+          LIMIT 1
+        )
+        LEFT JOIN companhias comp ON comp.id = first_voo.companhia_id
         LEFT JOIN solicitacoes sl ON sl.id = (
           SELECT inner_sl.id
           FROM solicitacoes inner_sl
@@ -286,6 +364,8 @@ export function getOrcamentoDocumentSource(
         pessoa_cpf: string | null;
         pessoa_email: string | null;
         pessoa_nome: string | null;
+        voo_fornecedor: string | null;
+        voo_localizador: string | null;
         raw_json: string;
         data_solicitacao: string | null;
         solicitacao_email: string | null;
@@ -320,6 +400,8 @@ export function getOrcamentoDocumentSource(
     solicitacaoEmail: row.solicitacao_email,
     solicitacaoNome: row.solicitacao_nome,
     solicitacaoTelefone: row.solicitacao_telefone,
+    vooFornecedor: row.voo_fornecedor,
+    vooLocalizador: row.voo_localizador,
   };
 }
 

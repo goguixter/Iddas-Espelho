@@ -36,6 +36,7 @@ export default async function OrcamentoDetailPage({
         situacaoCor={detail.situacao_cor}
         situacaoNome={detail.situacao_nome}
         vendas={detail.vendas}
+        voos={detail.voos}
       />
     </div>
   );

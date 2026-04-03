@@ -586,6 +586,92 @@ export async function getVendasPage(page: number, perPage: number, query = "") {
   return { items, page, perPage, total };
 }
 
+export async function getVoosPage(page: number, perPage: number, query = "") {
+  const where = buildLikeWhere(query, [
+    "vw.id",
+    "vw.orcamento_identificador",
+    "vw.orcamento_id",
+    "vw.companhia_nome",
+    "vw.companhia_iata",
+    "vw.localizador",
+    "vw.aeroporto_origem",
+    "vw.aeroporto_destino",
+    "vw.cliente_nome_db",
+    "vw.solicitacao_nome",
+    "vw.raw_json",
+  ]);
+  const total = readFilteredCount(
+    `
+      SELECT COUNT(*)
+      FROM voos_projection vw
+      ${where.clause}
+    `,
+    where.params,
+  );
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          vw.id,
+          vw.orcamento_id,
+          vw.orcamento_identificador,
+          vw.companhia_nome,
+          vw.companhia_iata,
+          vw.tipo_trecho,
+          vw.classe,
+          vw.aeroporto_origem,
+          vw.aeroporto_destino,
+          vw.data_embarque,
+          vw.hora_embarque,
+          vw.localizador,
+          vw.updated_at,
+          vw.cliente_nome_db,
+          vw.solicitacao_nome
+        FROM voos_projection vw
+        ${where.clause}
+        ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
+        LIMIT ? OFFSET ?
+      `,
+    )
+    .all(...where.params, perPage, (page - 1) * perPage) as Array<{
+      aeroporto_destino: string | null;
+      aeroporto_origem: string | null;
+      classe: string | null;
+      cliente_nome_db: string | null;
+      companhia_iata: string | null;
+      companhia_nome: string | null;
+      data_embarque: string | null;
+      hora_embarque: string | null;
+      id: string;
+      localizador: string | null;
+      orcamento_id: string | null;
+      orcamento_identificador: string | null;
+      solicitacao_nome: string | null;
+      tipo_trecho: string | null;
+      updated_at: string;
+    }>;
+
+  const items = rows.map((row) => ({
+    cliente_nome: row.cliente_nome_db ?? row.solicitacao_nome,
+    companhia_nome:
+      [row.companhia_nome, row.companhia_iata ? `(${row.companhia_iata})` : null]
+        .filter(Boolean)
+        .join(" ") || null,
+    embarque:
+      [row.data_embarque, row.hora_embarque].filter(Boolean).join(" · ") || null,
+    id: row.id,
+    localizador: row.localizador,
+    orcamento_id: row.orcamento_id,
+    orcamento_identificador: row.orcamento_identificador,
+    rota:
+      [row.aeroporto_origem, row.aeroporto_destino].filter(Boolean).join(" → ") || null,
+    tipo_trecho: row.tipo_trecho,
+    updated_at: row.updated_at,
+  }));
+
+  return { items, page, perPage, total };
+}
+
 export async function getPessoaDetail(id: string) {
   const pessoa = db
     .prepare(
@@ -799,6 +885,30 @@ export async function getOrcamentoDetail(id: string) {
     )
     .all(id) as Array<{ id: string; status: string | null }>;
 
+  const voos = db
+    .prepare(
+      `
+        SELECT
+          id,
+          localizador,
+          COALESCE(companhia_nome, '') AS companhia_nome,
+          aeroporto_origem,
+          aeroporto_destino
+        FROM voos_projection
+        WHERE orcamento_id = ?
+        ORDER BY date(COALESCE(data_embarque, '9999-12-31')) ASC,
+                 time(COALESCE(hora_embarque, '23:59:59')) ASC,
+                 id ASC
+      `,
+    )
+    .all(id) as Array<{
+      aeroporto_destino: string | null;
+      aeroporto_origem: string | null;
+      companhia_nome: string | null;
+      id: string;
+      localizador: string | null;
+    }>;
+
   return {
     ...orcamento,
     cliente_nome:
@@ -814,6 +924,7 @@ export async function getOrcamentoDetail(id: string) {
       pickObjectString(parseRawJson(orcamento.raw_json), ["nome_situacao", "situacao_nome"]),
     raw: parseRawJson(orcamento.raw_json),
     vendas,
+    voos,
   };
 }
 
@@ -863,6 +974,77 @@ export async function getVendaDetail(id: string) {
       pickObjectString(parseNullableRawJson(venda.orcamento_raw_json), ["nome_cliente"]) ??
       venda.solicitacao_nome,
     raw: parseRawJson(venda.raw_json),
+  };
+}
+
+export async function getVooDetail(id: string) {
+  const voo = db
+    .prepare(
+      `
+        SELECT
+          vw.id,
+          vw.orcamento_id,
+          vw.orcamento_identificador,
+          vw.companhia_id,
+          vw.companhia_nome,
+          vw.companhia_iata,
+          vw.titulo_orcamento,
+          vw.tipo_trecho,
+          vw.classe,
+          vw.aeroporto_origem,
+          vw.aeroporto_destino,
+          vw.data_embarque,
+          vw.hora_embarque,
+          vw.data_chegada,
+          vw.hora_chegada,
+          vw.duracao,
+          vw.localizador,
+          vw.observacao,
+          vw.cliente_pessoa_id,
+          vw.cliente_nome_db,
+          vw.solicitacao_nome,
+          vw.raw_json,
+          vw.updated_at
+        FROM voos_projection vw
+        WHERE vw.id = ?
+      `,
+    )
+    .get(id) as
+    | {
+        aeroporto_destino: string | null;
+        aeroporto_origem: string | null;
+        classe: string | null;
+        cliente_nome_db: string | null;
+        cliente_pessoa_id: string | null;
+        companhia_iata: string | null;
+        companhia_id: string | null;
+        companhia_nome: string | null;
+        data_chegada: string | null;
+        data_embarque: string | null;
+        duracao: string | null;
+        hora_chegada: string | null;
+        hora_embarque: string | null;
+        id: string;
+        localizador: string | null;
+        observacao: string | null;
+        orcamento_id: string | null;
+        orcamento_identificador: string | null;
+        raw_json: string;
+        solicitacao_nome: string | null;
+        tipo_trecho: string | null;
+        titulo_orcamento: string | null;
+        updated_at: string;
+      }
+    | undefined;
+
+  if (!voo) {
+    return null;
+  }
+
+  return {
+    ...voo,
+    cliente_nome: voo.cliente_nome_db ?? voo.solicitacao_nome,
+    raw: parseRawJson(voo.raw_json),
   };
 }
 

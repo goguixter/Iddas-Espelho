@@ -15,6 +15,14 @@ type Sale = {
   status: string | null;
 };
 
+type Flight = {
+  aeroporto_destino: string | null;
+  aeroporto_origem: string | null;
+  companhia_nome: string | null;
+  id: string;
+  localizador: string | null;
+};
+
 type OrcamentoDetailTabsProps = {
   clienteNome: string | null;
   clientePessoaId: string | null;
@@ -25,6 +33,7 @@ type OrcamentoDetailTabsProps = {
   situacaoCor: string | null;
   situacaoNome: string | null;
   vendas: Sale[];
+  voos: Flight[];
 };
 
 const tabs = [
@@ -69,7 +78,7 @@ export function OrcamentoDetailTabs(props: OrcamentoDetailTabsProps) {
       <div className="mt-5">
         {activeTab === "solicitacao" ? <SolicitacaoTab raw={raw} /> : null}
         {activeTab === "orcamento" ? <OrcamentoTab {...props} raw={raw} /> : null}
-        {activeTab === "voos" ? <VoosTab raw={raw} /> : null}
+        {activeTab === "voos" ? <VoosTab flights={props.voos} raw={raw} /> : null}
         {activeTab === "passageiros" ? (
           <PassageirosTab fallbackPassengers={props.passageiros} payloadPassengers={payloadPassengers} />
         ) : null}
@@ -168,7 +177,51 @@ function OrcamentoTab({
   );
 }
 
-function VoosTab({ raw }: { raw: Record<string, unknown> | null }) {
+function VoosTab({
+  flights,
+  raw,
+}: {
+  flights: Flight[];
+  raw: Record<string, unknown> | null;
+}) {
+  if (flights.length > 0) {
+    return (
+      <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+        <h2 className="text-lg font-semibold tracking-[-0.03em] text-[var(--color-ink)]">
+          Voos
+        </h2>
+        <div className="mt-4 space-y-3">
+          {flights.map((flight) => (
+            <div
+              key={flight.id}
+              className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-[var(--color-ink)]">
+                    {flight.companhia_nome ?? "Fornecedor não informado"}
+                  </p>
+                  <p className="mt-1 text-sm text-[var(--color-muted)]">
+                    {[flight.aeroporto_origem, flight.aeroporto_destino].filter(Boolean).join(" → ") || "Rota não informada"}
+                  </p>
+                </div>
+                <Link
+                  href={`/voos/${flight.id}`}
+                  className="rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-2 text-xs font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)]"
+                >
+                  Ver voo
+                </Link>
+              </div>
+              <p className="mt-3 text-sm text-[var(--color-muted)]">
+                Localizador: {flight.localizador ?? "—"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   const voos = readObjectArray(raw?.voos);
 
   if (voos.length === 0) {

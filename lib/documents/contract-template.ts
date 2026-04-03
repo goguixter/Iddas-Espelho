@@ -62,7 +62,7 @@ const CONTRATADA = {
 const ASSINATURA_CIDADE = "Novo Hamburgo";
 
 export function buildContractDocument(source: OrcamentoDocumentSource, input: ContractDocumentFormInput) {
-  const payload = buildPayloadFromOrcamento(source, input);
+  const payload = buildPayload(source, input);
   const title = `Contrato - ${payload.contratante.nome}`;
 
   return {
@@ -125,11 +125,6 @@ export function buildContractTemplatePreview() {
   };
 }
 
-function buildPayloadFromOrcamento(source: OrcamentoDocumentSource, input: ContractDocumentFormInput) {
-  const payload = buildPayload(source, input);
-  return payload;
-}
-
 function buildPayload(
   source: OrcamentoDocumentSource,
   input: ContractDocumentFormInput,
@@ -145,6 +140,7 @@ function buildPayload(
   const documentoLabel = inferDocumentLabel(documentNumber);
   const localizador =
     firstNonEmpty(input.localizadorReserva) ??
+    firstNonEmpty(source.vooLocalizador) ??
     firstNonEmpty(
       pickNestedString(raw, ["voos", "0", "localizador"]),
       pickNestedString(raw, ["voos", "0", "codigo_localizador"]),
@@ -158,6 +154,7 @@ function buildPayload(
   const supplier =
     firstNonEmpty(
       input.fornecedor,
+      source.vooFornecedor,
       pickNestedString(raw, ["voos", "0", "companhia"]),
       pickNestedString(raw, ["voos", "0", "cia"]),
       pickNestedString(raw, ["voos", "0", "fornecedor"]),

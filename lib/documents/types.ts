@@ -70,6 +70,8 @@ export type OrcamentoDocumentSource = {
   solicitacaoEmail: string | null;
   solicitacaoNome: string | null;
   solicitacaoTelefone: string | null;
+  vooFornecedor: string | null;
+  vooLocalizador: string | null;
 };
 
 export type PessoaDocumentSource = {
@@ -104,4 +106,11 @@ export type RecentOrcamentoDocumentOption = {
   identificador: string | null;
   situacao_cor?: string | null;
   situacao_nome?: string | null;
+};
+
+export type RecentFornecedorDocumentOption = {
+  hint: string | null;
+  id: string;
+  nome: string;
+  tipo: "companhia" | "pessoa";
 };
