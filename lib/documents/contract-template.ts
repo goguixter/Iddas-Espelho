@@ -309,7 +309,7 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
   <style>
     @page {
       size: A4;
-      margin: 20mm 16mm 20mm 16mm;
+      margin: 18mm 14mm 20mm 14mm;
     }
 
     * { box-sizing: border-box; }
@@ -359,6 +359,8 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     ul { margin: 1.5mm 0 4mm 7mm; padding: 0; }
     li { margin-bottom: 2mm; }
     table { width: 100%; border-collapse: collapse; margin: 5mm 0 6mm; table-layout: fixed; }
+    thead { display: table-header-group; }
+    tbody { display: table-row-group; }
     th, td {
       border: 1px solid rgba(0,0,0,0.75);
       padding: 3.2mm 3mm;
@@ -374,22 +376,57 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     .cell-center { text-align: center; }
     .cell-right { text-align: right; }
     .date-right { margin-top: 14mm; text-align: right; font-size: 10.8pt; line-height: 1.6; }
-    .signatures { display: flex; justify-content: space-between; gap: 16mm; margin-top: 30mm; }
+    .signatures { display: flex; justify-content: space-between; gap: 16mm; margin-top: 26mm; }
     .signature-block { flex: 1; text-align: center; }
     .signature-line { width: 62%; margin: 0 auto 5mm; border-top: 1px solid rgba(0,0,0,0.85); height: 0; }
     .signature-role, .signature-name, .signature-doc { text-align: center; margin: 0; font-size: 10.4pt; line-height: 1.5; }
     .signature-role { text-transform: uppercase; margin-bottom: 1.5mm; font-weight: 700; }
 
-    .section-title, table, tr, td, th, .service-box, .date-right, .signatures, .signature-block {
+    .service-box, .date-right, .signatures, .signature-block {
       page-break-inside: avoid;
       break-inside: avoid;
+    }
+
+    tr, td, th {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .section-title {
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    .section-title + .subclause,
+    .section-title + table,
+    .section-title + .service-box {
+      page-break-before: avoid;
+      break-before: avoid;
     }
 
     @media print {
       body { background: #fff; }
       html, body { width: 210mm; min-height: 297mm; }
-      .page { margin: 0; width: auto; min-height: auto; padding: 16mm 14mm 18mm; overflow: hidden; page-break-after: always; }
-      .page:last-child { page-break-after: auto; }
+      .page {
+        margin: 0;
+        width: auto;
+        min-height: auto;
+        padding: 0;
+        background: #fff;
+      }
+      .title { margin-bottom: 14mm; }
+      table { margin-bottom: 5mm; }
+      tr { page-break-inside: avoid; break-inside: avoid; }
+      .date-right { margin-top: 12mm; }
+      .signatures {
+        margin-top: 18mm;
+        page-break-before: auto;
+        break-before: auto;
+      }
+      .signature-block {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
     }
   </style>
 </head>

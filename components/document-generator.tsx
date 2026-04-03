@@ -312,6 +312,7 @@ function PersonSearchModal({
   onSelect,
   results,
   search,
+  selectedPassengers,
 }: {
   mode: "contratante" | "passageiro";
   onClose: () => void;
@@ -319,6 +320,7 @@ function PersonSearchModal({
   onSelect: (option: RecentPessoaDocumentOption) => void;
   results: RecentPessoaDocumentOption[];
   search: string;
+  selectedPassengers: Array<{ id: string; nome: string }>;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm">
@@ -351,24 +353,86 @@ function PersonSearchModal({
             placeholder="Digite nome ou CPF"
           />
 
+          {mode === "passageiro" ? (
+            <div className="mt-4 border-b border-[var(--color-line)] pb-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="text-xs uppercase tracking-[0.16em] text-[var(--color-faint)]">
+                  Selecionados
+                </span>
+                <span className="text-xs text-[var(--color-muted)]">
+                  {selectedPassengers.length} selecionado(s)
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {selectedPassengers.length ? (
+                  selectedPassengers.map((passenger) => (
+                    <RemovableTag
+                      key={`selected-passenger-${passenger.id}`}
+                      onRemove={() => onSelect({ id: passenger.id } as RecentPessoaDocumentOption)}
+                    >
+                      {passenger.nome}
+                    </RemovableTag>
+                  ))
+                ) : (
+                  <span className="text-sm text-[var(--color-muted)]">
+                    Nenhum passageiro selecionado.
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : null}
+
           <div className="table-scroll mt-4 min-h-0 flex-1 overflow-auto pr-1">
             <div className="space-y-2">
-              {results.map((option) => (
-                <button
-                  key={`person-search-${option.id}`}
-                  type="button"
-                  onClick={() => onSelect(option)}
-                  className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-transparent bg-[var(--color-panel)] px-4 py-3 text-left transition hover:border-[var(--color-accent)]"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-[var(--color-ink)]">{option.nome ?? "Sem nome"}</p>
-                    <p className="mt-1 text-xs text-[var(--color-muted)]">{option.cpf ?? option.id}</p>
-                  </div>
-                  <span className="text-xs text-[var(--color-faint)]">{option.cidade ?? "Sem cidade"}</span>
-                </button>
-              ))}
+              {results.map((option) => {
+                const isSelected =
+                  mode === "passageiro" &&
+                  selectedPassengers.some((passenger) => passenger.id === option.id);
+
+                return (
+                  <button
+                    key={`person-search-${option.id}`}
+                    type="button"
+                    onClick={() => onSelect(option)}
+                    className={`flex w-full cursor-pointer items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
+                      isSelected
+                        ? "border-[var(--color-accent)] bg-[var(--color-panel)]"
+                        : "border-transparent bg-[var(--color-panel)] hover:border-[var(--color-accent)]"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-[var(--color-ink)]">
+                        {option.nome ?? "Sem nome"}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--color-muted)]">{option.cpf ?? option.id}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-xs text-[var(--color-faint)]">
+                        {option.cidade ?? "Sem cidade"}
+                      </span>
+                      {isSelected ? (
+                        <span className="mt-1 block text-xs font-medium text-[var(--color-accent)]">
+                          Selecionado
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {mode === "passageiro" ? (
+            <div className="mt-4 flex justify-end border-t border-[var(--color-line)] pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-slate-950 transition hover:brightness-105"
+              >
+                Concluir
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -806,6 +870,10 @@ export function DocumentGenerator({
     }
   }
 
+  function removePassengerFromBase(personId: string) {
+    setSelectedPassengerPeople((current) => current.filter((person) => person.id !== personId));
+  }
+
   function openPersonModal(mode: "contratante" | "passageiro") {
     setError("");
     setPersonModalMode(mode);
@@ -854,7 +922,12 @@ export function DocumentGenerator({
       return;
     }
 
-    void addPassengerFromBase(option.id).finally(closePersonModal);
+    if (selectedPassengerPeople.some((person) => person.id === option.id)) {
+      removePassengerFromBase(option.id);
+      return;
+    }
+
+    void addPassengerFromBase(option.id);
   }
 
   return (
@@ -1093,6 +1166,10 @@ export function DocumentGenerator({
           onSelect={handlePersonSelection}
           results={personSearchResults}
           search={personSearch}
+          selectedPassengers={selectedPassengerPeople.map((person) => ({
+            id: person.id,
+            nome: toShortPersonName(person.nome),
+          }))}
         />
       ) : null}
 

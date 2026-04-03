@@ -48,7 +48,7 @@ export default async function DocumentoDetailPage({
             Abrir HTML
           </Link>
           <Link
-            href={`/api/documentos/${record.id}/html`}
+            href={`/api/documentos/${record.id}/html?print=1`}
             target="_blank"
             className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-slate-950 transition hover:brightness-105"
           >
