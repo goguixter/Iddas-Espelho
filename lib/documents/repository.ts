@@ -182,6 +182,32 @@ export function getRecentPessoaDocumentOptions(limit = 20) {
     .all(limit) as RecentPessoaDocumentOption[];
 }
 
+export function searchPessoaDocumentOptions(query: string, limit = 20) {
+  const normalizedQuery = query.trim();
+
+  if (!normalizedQuery) {
+    return getRecentPessoaDocumentOptions(limit);
+  }
+
+  const like = `%${normalizedQuery}%`;
+  const digits = normalizedQuery.replace(/\D/g, "");
+  const cpfLike = digits ? `%${digits}%` : like;
+
+  return db
+    .prepare(
+      `
+        SELECT id, nome, cpf, cidade
+        FROM pessoas
+        WHERE
+          COALESCE(nome, '') LIKE ?
+          OR REPLACE(REPLACE(REPLACE(COALESCE(cpf, ''), '.', ''), '-', ''), '/', '') LIKE ?
+        ORDER BY datetime(updated_at) DESC, id DESC
+        LIMIT ?
+      `,
+    )
+    .all(like, cpfLike, limit) as RecentPessoaDocumentOption[];
+}
+
 export function getOrcamentoDocumentSource(
   orcamentoId: string,
 ): OrcamentoDocumentSource | null {

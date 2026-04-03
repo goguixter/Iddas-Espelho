@@ -39,7 +39,7 @@ export function DocumentTemplateManager({
 
   return (
     <section className="grid h-full min-h-0 gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-      <div className="min-h-0 overflow-auto pr-1">
+      <div className="table-scroll min-h-0 overflow-auto pr-1">
         <div className="space-y-4">
         {items.map((template) => (
           <article

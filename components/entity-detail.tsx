@@ -66,7 +66,7 @@ export function EntityJsonPanel({
       <div className="border-b border-white/10 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
         JSON bruto espelhado
       </div>
-      <pre className="max-h-[65vh] max-w-full overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-slate-100">
+      <pre className="table-scroll max-h-[65vh] max-w-full overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-slate-100">
         {JSON.stringify(raw, null, 2)}
       </pre>
     </section>

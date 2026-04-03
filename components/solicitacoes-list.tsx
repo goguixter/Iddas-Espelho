@@ -206,7 +206,7 @@ export function SolicitacoesList({
             <DateField value={date} onChange={setDate} />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto rounded-[24px] border border-[var(--color-line)] p-3">
+          <div className="table-scroll min-h-0 flex-1 overflow-auto rounded-[24px] border border-[var(--color-line)] p-3">
             <div className="space-y-3">
               {result.items.length > 0 ? (
                 result.items.map((row) => (
@@ -388,7 +388,7 @@ export function SolicitacoesList({
               </button>
             </div>
 
-            <div className="max-h-[calc(88vh-88px)] overflow-auto px-6 py-5">
+            <div className="table-scroll max-h-[calc(88vh-88px)] overflow-auto px-6 py-5">
               {loading || !detail ? (
                 <div className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-6 text-sm text-[var(--color-muted)]">
                   Carregando solicitação...

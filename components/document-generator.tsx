@@ -2,11 +2,8 @@
 
 import {
   useEffect,
-  useMemo,
   useState,
-  type Dispatch,
   type FormEvent,
-  type SetStateAction,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -15,7 +12,6 @@ import {
   MapPinned,
   Plus,
   RefreshCcw,
-  ReceiptText,
   Search,
   UserRound,
   Users,
@@ -46,42 +42,42 @@ type FormState = {
   servicoContratado: string;
 };
 
-type ManualPassenger = {
-  dataNascimento: string;
-  documento: string;
-  nome: string;
-};
-
-const initialPassenger: ManualPassenger = {
-  dataNascimento: "",
-  documento: "",
-  nome: "",
-};
+function getEmptyAutofillFields() {
+  return {
+    bairro: "",
+    cep: "",
+    cidade: "",
+    estado: "",
+    localizadorReserva: "",
+    logradouro: "",
+    manualContratanteDocumento: "",
+    manualContratanteNome: "",
+    numero: "",
+  };
+}
 
 export function DocumentGenerator({
   forcedMode,
   initialOrcamentoId = "",
-  recentOrcamentos,
   recentPessoas,
 }: {
   forcedMode?: "manual" | "orcamento";
   initialOrcamentoId?: string;
-  recentOrcamentos: RecentOrcamentoDocumentOption[];
   recentPessoas: RecentPessoaDocumentOption[];
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingSource, setLoadingSource] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
-  const [selectedPassengerId, setSelectedPassengerId] = useState("");
+  const [personModalMode, setPersonModalMode] = useState<"contratante" | "passageiro" | null>(null);
+  const [personSearch, setPersonSearch] = useState("");
+  const [personSearchResults, setPersonSearchResults] = useState<RecentPessoaDocumentOption[]>(recentPessoas);
   const [orcamentoSearch, setOrcamentoSearch] = useState("");
   const [orcamentoSearchResults, setOrcamentoSearchResults] = useState<
     RecentOrcamentoDocumentOption[]
   >([]);
   const [selectedPassengerPeople, setSelectedPassengerPeople] = useState<PessoaDocumentSource[]>([]);
-  const [manualPassengers, setManualPassengers] = useState<ManualPassenger[]>([]);
   const [form, setForm] = useState<FormState>({
     bairro: "",
     cep: "",
@@ -101,9 +97,7 @@ export function DocumentGenerator({
     servicoContratado: "Intermediação na compra de passagens aéreas",
   });
 
-  const datalistContratante = useMemo(() => "pessoas-contratante-documentos", []);
-  const datalistPassageiros = useMemo(() => "pessoas-passageiros-documentos", []);
-  const isStandaloneOrcamento = forcedMode === "orcamento";
+  const isStandalone = Boolean(forcedMode);
 
   useEffect(() => {
     if (!forcedMode) {
@@ -151,12 +145,45 @@ export function DocumentGenerator({
   }, [form.mode, orcamentoSearch]);
 
   useEffect(() => {
+    if (!personModalMode) {
+      return;
+    }
+
+    const query = personSearch.trim();
+    let active = true;
+    const timeoutId = window.setTimeout(() => {
+      fetch(`/api/documentos/pessoas?q=${encodeURIComponent(query)}`)
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Não foi possível buscar pessoas.");
+          }
+          return response.json();
+        })
+        .then((results: RecentPessoaDocumentOption[]) => {
+          if (!active) return;
+          setPersonSearchResults(results);
+        })
+        .catch(() => {
+          if (!active) return;
+          setPersonSearchResults([]);
+        });
+    }, 200);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [personModalMode, personSearch]);
+
+  useEffect(() => {
     if (form.mode !== "orcamento" || !form.orcamentoId.trim()) {
+      if (form.mode === "orcamento") {
+        setForm((current) => ({ ...current, ...getEmptyAutofillFields() }));
+      }
       return;
     }
 
     let active = true;
-    setLoadingSource(true);
     fetch(`/api/documentos/orcamentos/${form.orcamentoId}`)
       .then(async (response) => {
         if (!response.ok) {
@@ -168,16 +195,16 @@ export function DocumentGenerator({
         if (!active) return;
         setForm((current) => ({
           ...current,
-          bairro: current.bairro || source.clienteBairro || "",
-          cep: current.cep || source.clienteCep || "",
-          cidade: current.cidade || source.clienteCidade || "",
-          estado: current.estado || source.clienteEstado || "",
-          localizadorReserva: current.localizadorReserva || extractString(source.raw?.voos?.[0]?.localizador),
-          logradouro: current.logradouro || source.clienteEndereco || "",
-          manualContratanteDocumento:
-            current.manualContratanteDocumento || source.clienteCpf || "",
-          manualContratanteNome: current.manualContratanteNome || source.clienteNome || "",
-          numero: current.numero || source.clienteNumero || "",
+          ...getEmptyAutofillFields(),
+          bairro: source.clienteBairro || "",
+          cep: source.clienteCep || "",
+          cidade: source.clienteCidade || "",
+          estado: source.clienteEstado || "",
+          localizadorReserva: extractString(source.raw?.voos?.[0]?.localizador),
+          logradouro: source.clienteEndereco || "",
+          manualContratanteDocumento: source.clienteCpf || "",
+          manualContratanteNome: source.clienteNome || "",
+          numero: source.clienteNumero || "",
         }));
       })
       .catch(() => {
@@ -185,9 +212,7 @@ export function DocumentGenerator({
           setError("Não foi possível carregar os dados automáticos do orçamento.");
         }
       })
-      .finally(() => {
-        if (active) setLoadingSource(false);
-      });
+      .finally(() => {});
 
     return () => {
       active = false;
@@ -196,11 +221,17 @@ export function DocumentGenerator({
 
   useEffect(() => {
     if (form.mode !== "manual" || !form.pessoaContratanteId.trim()) {
+      if (form.mode === "manual") {
+        setForm((current) => ({
+          ...current,
+          ...getEmptyAutofillFields(),
+          manualContratanteDocumentoLabel: "CPF",
+        }));
+      }
       return;
     }
 
     let active = true;
-    setLoadingSource(true);
     fetch(`/api/documentos/pessoas/${form.pessoaContratanteId}`)
       .then(async (response) => {
         if (!response.ok) {
@@ -212,16 +243,16 @@ export function DocumentGenerator({
         if (!active) return;
         setForm((current) => ({
           ...current,
-          bairro: source.bairro || current.bairro,
-          cep: source.cep || current.cep,
-          cidade: source.cidade || current.cidade,
-          estado: source.estado || current.estado || "",
-          logradouro: source.endereco || current.logradouro,
-          manualContratanteDocumento:
-            source.cpf || source.passaporte || current.manualContratanteDocumento,
+          ...getEmptyAutofillFields(),
+          bairro: source.bairro || "",
+          cep: source.cep || "",
+          cidade: source.cidade || "",
+          estado: source.estado || "",
+          logradouro: source.endereco || "",
+          manualContratanteDocumento: source.cpf || source.passaporte || "",
           manualContratanteDocumentoLabel: source.cpf ? "CPF" : "Passaporte",
-          manualContratanteNome: source.nome || current.manualContratanteNome,
-          numero: source.numero || current.numero,
+          manualContratanteNome: source.nome || "",
+          numero: source.numero || "",
         }));
       })
       .catch(() => {
@@ -229,9 +260,7 @@ export function DocumentGenerator({
           setError("Não foi possível carregar os dados da pessoa.");
         }
       })
-      .finally(() => {
-        if (active) setLoadingSource(false);
-      });
+      .finally(() => {});
 
     return () => {
       active = false;
@@ -239,22 +268,22 @@ export function DocumentGenerator({
   }, [form.mode, form.pessoaContratanteId]);
 
   useEffect(() => {
-    if (form.mode !== "orcamento") {
+    const hasAddress =
+      form.logradouro.trim() &&
+      form.numero.trim() &&
+      form.bairro.trim() &&
+      form.cep.trim() &&
+      form.cidade.trim() &&
+      form.estado.trim();
+    const canPreviewOrcamento = form.mode === "orcamento" && form.orcamentoId.trim() && hasAddress;
+    const canPreviewManual =
+      form.mode === "manual" &&
+      hasAddress &&
+      (form.pessoaContratanteId.trim() || form.manualContratanteNome.trim());
+
+    if (!canPreviewOrcamento && !canPreviewManual) {
       setPreviewHtml("");
       setLoadingPreview(false);
-      return;
-    }
-
-    if (
-      !form.orcamentoId.trim() ||
-      !form.logradouro.trim() ||
-      !form.numero.trim() ||
-      !form.bairro.trim() ||
-      !form.cep.trim() ||
-      !form.cidade.trim() ||
-      !form.estado.trim()
-    ) {
-      setPreviewHtml("");
       return;
     }
 
@@ -265,7 +294,6 @@ export function DocumentGenerator({
       fetch("/api/documentos/preview", {
         body: JSON.stringify({
           ...form,
-          manualPassageiros: manualPassengers.filter((item) => item.nome.trim()),
           passageirosPessoaIds: selectedPassengerPeople.map((item) => item.id),
         }),
         headers: { "content-type": "application/json" },
@@ -295,7 +323,7 @@ export function DocumentGenerator({
       active = false;
       window.clearTimeout(timeoutId);
     };
-  }, [form, manualPassengers, selectedPassengerPeople]);
+  }, [form, selectedPassengerPeople]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -306,7 +334,6 @@ export function DocumentGenerator({
       const response = await fetch("/api/documentos", {
         body: JSON.stringify({
           ...form,
-          manualPassageiros: manualPassengers.filter((item) => item.nome.trim()),
           passageirosPessoaIds: selectedPassengerPeople.map((item) => item.id),
         }),
         headers: { "content-type": "application/json" },
@@ -335,13 +362,11 @@ export function DocumentGenerator({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  async function addPassengerFromBase() {
-    const personId = selectedPassengerId.trim();
+  async function addPassengerFromBase(personId: string) {
     if (!personId || selectedPassengerPeople.some((person) => person.id === personId)) {
       return;
     }
 
-    setLoadingSource(true);
     try {
       const response = await fetch(`/api/documentos/pessoas/${personId}`);
       if (!response.ok) {
@@ -349,23 +374,71 @@ export function DocumentGenerator({
       }
       const source = (await response.json()) as PessoaDocumentSource;
       setSelectedPassengerPeople((current) => [...current, source]);
-      setSelectedPassengerId("");
     } catch {
       setError("Não foi possível adicionar o passageiro selecionado.");
-    } finally {
-      setLoadingSource(false);
     }
+  }
+
+  function openPersonModal(mode: "contratante" | "passageiro") {
+    setError("");
+    setPersonModalMode(mode);
+    setPersonSearch("");
+    setPersonSearchResults(recentPessoas);
+  }
+
+  function closePersonModal() {
+    setPersonModalMode(null);
+    setPersonSearch("");
+    setPersonSearchResults(recentPessoas);
+  }
+
+  function defineContratanteFromBase(personId: string) {
+    if (!personId) {
+      return;
+    }
+
+    setError("");
+    updateField("pessoaContratanteId", personId);
+    if (!selectedPassengerPeople.some((person) => person.id === personId)) {
+      void fetch(`/api/documentos/pessoas/${personId}`)
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Pessoa não encontrada.");
+          }
+          return response.json();
+        })
+        .then((source: PessoaDocumentSource) => {
+          setSelectedPassengerPeople((current) =>
+            current.some((person) => person.id === source.id) ? current : [source, ...current],
+          );
+        })
+        .catch(() => {
+          setError("Não foi possível adicionar o contratante como passageiro.");
+        });
+    }
+    closePersonModal();
+  }
+
+  function handlePersonSelection(option: RecentPessoaDocumentOption) {
+    if (personModalMode === "contratante") {
+      defineContratanteFromBase(option.id);
+      return;
+    }
+
+    void addPassengerFromBase(option.id).finally(() => {
+      closePersonModal();
+    });
   }
 
   return (
     <section
       className={
-        isStandaloneOrcamento
+        isStandalone
           ? "flex h-full min-h-0 flex-col"
-          : "rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]"
+        : "rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]"
       }
     >
-      {isStandaloneOrcamento ? null : (
+      {isStandalone ? null : (
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
@@ -403,17 +476,17 @@ export function DocumentGenerator({
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className={`${isStandaloneOrcamento ? "flex min-h-0 flex-1 flex-col space-y-5" : "mt-5 space-y-5"}`}>
+      <form onSubmit={handleSubmit} className={`${isStandalone ? "flex min-h-0 flex-1 flex-col space-y-5" : "mt-5 space-y-5"}`}>
         <div
-          className={`grid ${isStandaloneOrcamento ? "min-h-0 flex-1" : ""} gap-4 ${
+          className={`grid ${isStandalone ? "min-h-0 flex-1" : ""} gap-4 ${
             form.mode === "orcamento"
               ? "xl:grid-cols-[0.8fr_1.2fr]"
-              : "xl:grid-cols-[1.15fr_1fr]"
+              : "xl:grid-cols-[0.85fr_1.15fr]"
           }`}
         >
-          <section className={`rounded-[24px] border border-[var(--color-line)] p-4 ${form.mode === "orcamento" ? "bg-[var(--color-surface)]" : "bg-[var(--color-panel)]"}`}>
+          <section className={`min-h-0 rounded-[24px] border border-[var(--color-line)] p-4 ${isStandalone ? "bg-[var(--color-surface)]" : form.mode === "orcamento" ? "bg-[var(--color-surface)]" : "bg-[var(--color-panel)]"}`}>
             {form.mode === "orcamento" ? (
-              <div className="space-y-4">
+              <div className="flex h-full min-h-0 flex-col gap-4">
                 <SearchField
                   label="Buscar orçamento por nome"
                   labelClassName="text-[var(--color-accent)]"
@@ -423,48 +496,154 @@ export function DocumentGenerator({
                   placeholder="Digite o nome do cliente, tag ou ID"
                 />
 
-                {orcamentoSearchResults.length > 0 ? (
-                  <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-2">
-                    <div className="space-y-2">
-                      {orcamentoSearchResults.map((option) => (
-                        <button
-                          key={`orcamento-search-${option.id}`}
-                          type="button"
-                          onClick={() => {
-                            updateField("orcamentoId", option.id);
-                            setOrcamentoSearch(option.cliente_nome ?? option.identificador ?? option.id);
-                            setOrcamentoSearchResults([]);
-                          }}
-                          className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-transparent bg-[var(--color-panel)] px-3 py-3 text-left transition hover:border-[var(--color-accent)]"
-                        >
-                          <div>
-                            <p className="text-sm font-medium text-[var(--color-ink)]">
-                              {option.cliente_nome ?? "Sem cliente"}
-                            </p>
-                            <p className="mt-1 text-xs text-[var(--color-muted)]">
-                              {option.identificador ?? "sem-tag"}
-                            </p>
-                          </div>
-                          <span className="rounded-full border border-[var(--color-line)] px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-[var(--color-faint)]">
-                            {option.situacao_nome ?? "Sem situação"}
-                          </span>
-                        </button>
-                      ))}
+                <div className="min-h-0 flex-1">
+                  {orcamentoSearchResults.length > 0 ? (
+                    <div className="flex h-full min-h-[320px] flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-2">
+                      <div className="table-scroll min-h-0 flex-1 space-y-2 overflow-auto pr-1">
+                        {orcamentoSearchResults.map((option) => (
+                          <button
+                            key={`orcamento-search-${option.id}`}
+                            type="button"
+                            onClick={() => {
+                              setError("");
+                              updateField("orcamentoId", option.id);
+                              setOrcamentoSearch(option.cliente_nome ?? option.identificador ?? option.id);
+                              setOrcamentoSearchResults([]);
+                            }}
+                            className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-transparent bg-[var(--color-panel)] px-3 py-3 text-left transition hover:border-[var(--color-accent)]"
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-[var(--color-ink)]">
+                                {option.cliente_nome ?? "Sem cliente"}
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                                {option.identificador ?? "sem-tag"}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-[var(--color-line)] px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-[var(--color-faint)]">
+                              {option.situacao_nome ?? "Sem situação"}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                  ) : (
+                    <div className="flex h-full min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-panel)] px-5 text-center text-sm text-[var(--color-muted)]">
+                      Busque por nome, tag ou ID para localizar o orçamento e preencher o contrato automaticamente.
+                    </div>
+                  )}
+                </div>
+
+                {error ? (
+                  <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                    {error}
                   </div>
                 ) : null}
 
-                <div className="flex flex-wrap gap-2">
-                  {recentOrcamentos.map((option) => (
+                <div className="pt-1">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileText className="h-4 w-4" />
+                    )}
+                    Gerar documento
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
+                  <div className="flex items-center gap-2 text-[var(--color-ink)]">
+                    <Users className="h-4 w-4 text-[var(--color-accent)]" />
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
+                      Pessoas do contrato
+                    </h3>
+                  </div>
+
+                  <div className="mt-4 space-y-4">
                     <button
-                      key={option.id}
                       type="button"
-                      onClick={() => updateField("orcamentoId", option.id)}
-                      className="cursor-pointer rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-ink)]"
+                      onClick={() => openPersonModal(form.pessoaContratanteId ? "passageiro" : "contratante")}
+                      className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
                     >
-                      {option.cliente_nome ?? option.identificador ?? "Sem cliente"}
+                      {form.pessoaContratanteId ? <Plus className="h-4 w-4" /> : <UserRound className="h-4 w-4" />}
+                      {form.pessoaContratanteId ? "Adicionar passageiro" : "Definir contratante"}
                     </button>
-                  ))}
+                    {form.pessoaContratanteId ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-faint)]">
+                          Contratante
+                        </p>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                          {form.manualContratanteNome || form.pessoaContratanteId}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError("");
+                              updateField("pessoaContratanteId", "");
+                              setSelectedPassengerPeople((current) =>
+                                current.filter((item) => item.id !== form.pessoaContratanteId),
+                              );
+                            }}
+                            className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-faint)]">
+                        Passageiros
+                      </p>
+                      <div className="table-scroll max-h-28 overflow-auto pr-1">
+                        <div className="flex flex-wrap gap-2">
+                          {selectedPassengerPeople
+                            .filter((person) => person.id !== form.pessoaContratanteId)
+                            .map((person) => (
+                              <span
+                                key={person.id}
+                                className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-ink)]"
+                              >
+                                {person.nome ?? person.id}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedPassengerPeople((current) =>
+                                      current.filter((item) => item.id !== person.id),
+                                    )
+                                  }
+                                  className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </span>
+                            ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
+                  <div className="flex items-center gap-2 text-[var(--color-ink)]">
+                    <FileText className="h-4 w-4 text-[var(--color-accent)]" />
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
+                      Dados do serviço
+                    </h3>
+                  </div>
+
+                  <div className="mt-4 grid gap-3">
+                    <InputField label="Localizador da reserva" value={form.localizadorReserva} onChange={(value) => updateField("localizadorReserva", value)} />
+                    <InputField label="Serviço contratado" value={form.servicoContratado} onChange={(value) => updateField("servicoContratado", value)} />
+                    <InputField label="Fornecedor" value={form.fornecedor} onChange={(value) => updateField("fornecedor", value)} />
+                    <TextAreaField label="Condições tarifárias" value={form.condicoesTarifarias} onChange={(value) => updateField("condicoesTarifarias", value)} />
+                  </div>
                 </div>
 
                 {error ? (
@@ -486,45 +665,15 @@ export function DocumentGenerator({
                   Gerar documento
                 </button>
               </div>
-            ) : (
-              <div>
-                <div className="flex items-center gap-2 text-[var(--color-ink)]">
-                  <UserRound className="h-4 w-4 text-[var(--color-accent)]" />
-                  <div>
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                      Contratante
-                    </h3>
-                  </div>
-                </div>
-
-              <div className="mt-4 space-y-3">
-                <InputWithDatalist
-                  datalistId={datalistContratante}
-                  label="Pessoa do contratante"
-                  value={form.pessoaContratanteId}
-                  onChange={(value) => updateField("pessoaContratanteId", value)}
-                  options={recentPessoas.map((option) => ({
-                    label: `${option.nome ?? "sem nome"} • ${option.cpf ?? option.id}`,
-                    value: option.id,
-                  }))}
-                  placeholder="ID da pessoa"
-                />
-                <div className="grid gap-3 md:grid-cols-2">
-                  <InputField label="Nome manual" value={form.manualContratanteNome} onChange={(value) => updateField("manualContratanteNome", value)} />
-                  <InputField label="Documento manual" value={form.manualContratanteDocumento} onChange={(value) => updateField("manualContratanteDocumento", value)} />
-                </div>
-              </div>
-              </div>
             )}
           </section>
 
-          {form.mode === "orcamento" ? (
-            <section className="flex min-h-0 flex-col rounded-[24px] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <section className="flex min-h-0 flex-col rounded-[24px] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
               <div className="flex items-center justify-between gap-3 text-[var(--color-ink)]">
                 <div className="flex items-center gap-2">
                   <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
                   <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                    Preview automático
+                    {form.mode === "orcamento" ? "Preview automático" : "Preview do contrato"}
                   </h3>
                 </div>
                 <div className="flex items-center gap-3">
@@ -548,202 +697,76 @@ export function DocumentGenerator({
                   />
                 ) : (
                   <div className="flex h-full min-h-[720px] items-center justify-center px-6 text-center text-sm text-[var(--color-muted)]">
-                    Selecione um orçamento para gerar a prévia automática do contrato.
+                    {form.mode === "orcamento"
+                      ? "Selecione um orçamento para gerar a prévia automática do contrato."
+                      : "Selecione o contratante e preencha os dados do serviço para gerar a prévia do contrato."}
                   </div>
                 )}
               </div>
-            </section>
-          ) : (
-            <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-              <div className="flex items-center gap-2 text-[var(--color-ink)]">
-                <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
-                <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                  Endereço do contratante
+          </section>
+        </div>
+      </form>
+
+      {personModalMode ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm">
+          <div className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgba(15,23,42,0.4)]">
+            <div className="flex items-center justify-between gap-4 border-b border-[var(--color-line)] px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
+                  {personModalMode === "contratante" ? "Contratante" : "Passageiro"}
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
+                  {personModalMode === "contratante" ? "Buscar contratante" : "Buscar passageiro"}
                 </h3>
               </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <InputField label="Logradouro" value={form.logradouro} onChange={(value) => updateField("logradouro", value)} />
-                <InputField label="Número" value={form.numero} onChange={(value) => updateField("numero", value)} />
-                <InputField label="Bairro" value={form.bairro} onChange={(value) => updateField("bairro", value)} />
-                <InputField label="CEP" value={form.cep} onChange={(value) => updateField("cep", value)} />
-                <InputField label="Cidade" value={form.cidade} onChange={(value) => updateField("cidade", value)} />
-                <InputField label="Estado" value={form.estado} onChange={(value) => updateField("estado", value.toUpperCase())} maxLength={2} />
-              </div>
-            </section>
-          )}
-        </div>
-
-        {form.mode === "manual" ? (
-        <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-          <div className="flex items-center gap-2 text-[var(--color-ink)]">
-            <Users className="h-4 w-4 text-[var(--color-accent)]" />
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-              Passageiros
-            </h3>
-          </div>
-
-          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr]">
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <div className="flex-1">
-                <InputWithDatalist
-                  datalistId={datalistPassageiros}
-                  label="Adicionar passageiro da base"
-                    value={selectedPassengerId}
-                    onChange={setSelectedPassengerId}
-                    options={recentPessoas.map((option) => ({
-                      label: `${option.nome ?? "sem nome"} • ${option.cpf ?? option.id}`,
-                      value: option.id,
-                    }))}
-                    placeholder="ID da pessoa"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={addPassengerFromBase}
-                  className="mt-[26px] inline-flex h-12 w-12 cursor-pointer items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {selectedPassengerPeople.map((person) => (
-                  <span
-                    key={person.id}
-                    className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-ink)]"
-                  >
-                    {person.nome ?? person.id}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedPassengerPeople((current) =>
-                          current.filter((item) => item.id !== person.id),
-                        )
-                      }
-                      className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {manualPassengers.map((passenger, index) => (
-                <div
-                  key={`${index}-${passenger.nome}`}
-                  className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3"
-                >
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <InputField
-                      label="Nome"
-                      value={passenger.nome}
-                      onChange={(value) => updateManualPassenger(index, "nome", value, setManualPassengers)}
-                    />
-                    <InputField
-                      label="Documento"
-                      value={passenger.documento}
-                      onChange={(value) => updateManualPassenger(index, "documento", value, setManualPassengers)}
-                    />
-                    <InputField
-                      label="Nascimento"
-                      value={passenger.dataNascimento}
-                      onChange={(value) => updateManualPassenger(index, "dataNascimento", value, setManualPassengers)}
-                    />
-                  </div>
-                </div>
-              ))}
-
               <button
                 type="button"
-                onClick={() => setManualPassengers((current) => [...current, { ...initialPassenger }])}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                onClick={closePersonModal}
+                className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
               >
-                <Plus className="h-4 w-4" />
-                Adicionar passageiro manual
+                <X className="h-4 w-4" />
               </button>
             </div>
-          </div>
-        </section>
-        ) : null}
 
-        {form.mode === "manual" ? (
-        <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-          <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-            <div className="flex items-center gap-2 text-[var(--color-ink)]">
-              <ReceiptText className="h-4 w-4 text-[var(--color-accent)]" />
-              <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                Dados variáveis do serviço
-              </h3>
-            </div>
+            <div className="flex min-h-0 flex-1 flex-col px-6 py-5">
+              <SearchField
+                label={personModalMode === "contratante" ? "Buscar contratante" : "Buscar passageiro"}
+                labelClassName="text-[var(--color-accent)]"
+                inputClassName="bg-[var(--color-panel)]"
+                value={personSearch}
+                onChange={setPersonSearch}
+                placeholder="Digite nome ou CPF"
+              />
 
-            <div className="mt-4 grid gap-3">
-              <InputField label="Localizador da reserva" value={form.localizadorReserva} onChange={(value) => updateField("localizadorReserva", value)} />
-              <InputField label="Serviço contratado" value={form.servicoContratado} onChange={(value) => updateField("servicoContratado", value)} />
-              <InputField label="Fornecedor" value={form.fornecedor} onChange={(value) => updateField("fornecedor", value)} />
-              <TextAreaField label="Condições tarifárias" value={form.condicoesTarifarias} onChange={(value) => updateField("condicoesTarifarias", value)} />
-            </div>
-          </section>
-
-          <section className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-            <div className="flex items-center gap-2 text-[var(--color-ink)]">
-              <FileText className="h-4 w-4 text-[var(--color-accent)]" />
-              <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                Geração do documento
-              </h3>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
-              {loadingSource
-                ? "Carregando dados automáticos..."
-                : "A cidade será sempre Novo Hamburgo e a data será preenchida automaticamente com o dia da geração do contrato."}
-            </div>
-
-            <div className="mt-3 rounded-2xl border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
-              O documento será salvo com snapshot HTML estático e poderá ser impresso em PDF depois.
-            </div>
-
-            {error ? (
-              <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-                {error}
+              <div className="table-scroll mt-4 min-h-0 flex-1 overflow-auto pr-1">
+                <div className="space-y-2">
+                  {personSearchResults.map((option) => (
+                    <button
+                      key={`person-search-${option.id}`}
+                      type="button"
+                      onClick={() => handlePersonSelection(option)}
+                      className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-transparent bg-[var(--color-panel)] px-4 py-3 text-left transition hover:border-[var(--color-accent)]"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-[var(--color-ink)]">
+                          {option.nome ?? "Sem nome"}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--color-muted)]">
+                          {option.cpf ?? option.id}
+                        </p>
+                      </div>
+                      <span className="text-xs text-[var(--color-faint)]">
+                        {option.cidade ?? "Sem cidade"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            ) : null}
-          </section>
+            </div>
+          </div>
         </div>
-        ) : null}
-
-        {form.mode === "manual" ? (
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? (
-              <LoaderCircle className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4" />
-            )}
-            Gerar documento
-          </button>
-        ) : null}
-      </form>
+      ) : null}
     </section>
-  );
-}
-
-function updateManualPassenger(
-  index: number,
-  key: keyof ManualPassenger,
-  value: string,
-  setState: Dispatch<SetStateAction<ManualPassenger[]>>,
-) {
-  setState((current) =>
-    current.map((item, itemIndex) =>
-      itemIndex === index ? { ...item, [key]: value } : item,
-    ),
   );
 }
 
@@ -772,42 +795,6 @@ function ModeButton({
     >
       {label}
     </button>
-  );
-}
-
-function InputWithDatalist({
-  datalistId,
-  label,
-  onChange,
-  options,
-  placeholder,
-  value,
-}: {
-  datalistId: string;
-  label: string;
-  onChange: (value: string) => void;
-  options: Array<{ label: string; value: string }>;
-  placeholder?: string;
-  value: string;
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs uppercase tracking-[0.16em] text-[var(--color-faint)]">
-        {label}
-      </span>
-      <input
-        list={datalistId}
-        className="mt-2 w-full rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)]"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-      />
-      <datalist id={datalistId}>
-        {options.map((option) => (
-          <option key={`${datalistId}-${option.value}`} value={option.value} label={option.label} />
-        ))}
-      </datalist>
-    </label>
   );
 }
 

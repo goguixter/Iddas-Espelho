@@ -6,7 +6,6 @@ import { DocumentTemplateManager } from "@/components/document-template-manager"
 import { buildContractTemplatePreview } from "@/lib/documents/contract-template";
 import {
   listDocumentTemplates,
-  getRecentOrcamentoDocumentOptions,
   getRecentPessoaDocumentOptions,
   listDocumentRecords,
 } from "@/lib/documents/repository";
@@ -22,9 +21,8 @@ export default async function DocumentosPage({
     : "template";
   const copy = getDocumentsTabCopy(activeTab);
   const preview = buildContractTemplatePreview();
-  const [documents, recentOrcamentos, recentPessoas, templates] = await Promise.all([
+  const [documents, recentPessoas, templates] = await Promise.all([
     activeTab === "historico" ? listDocumentRecords() : Promise.resolve([]),
-    activeTab === "orcamento" ? getRecentOrcamentoDocumentOptions() : Promise.resolve([]),
     activeTab === "manual" ? getRecentPessoaDocumentOptions() : Promise.resolve([]),
     activeTab === "template" ? listDocumentTemplates() : Promise.resolve([]),
   ]);
@@ -68,7 +66,7 @@ export default async function DocumentosPage({
         </TabLink>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto pr-1">
+      <div className="table-scroll min-h-0 flex-1 overflow-auto pr-1">
         {activeTab === "template" ? (
           <DocumentTemplateManager
             initialPreviewHtml={preview.html}
@@ -78,13 +76,11 @@ export default async function DocumentosPage({
           <DocumentGenerator
             forcedMode="orcamento"
             initialOrcamentoId={orcamentoId}
-            recentOrcamentos={recentOrcamentos}
             recentPessoas={[]}
           />
         ) : activeTab === "manual" ? (
           <DocumentGenerator
             forcedMode="manual"
-            recentOrcamentos={[]}
             recentPessoas={recentPessoas}
           />
         ) : (
@@ -101,7 +97,7 @@ export default async function DocumentosPage({
               <FileText className="h-5 w-5 text-[var(--color-accent)]" />
             </div>
 
-            <div className="mt-5 min-h-0 flex-1 overflow-auto">
+            <div className="table-scroll mt-5 min-h-0 flex-1 overflow-auto pr-1">
               {documents.length === 0 ? (
                 <div className="rounded-[24px] border border-dashed border-[var(--color-line)] bg-[var(--color-panel)] px-5 py-6 text-sm text-[var(--color-muted)]">
                   Nenhum documento foi gerado ainda.
@@ -170,10 +166,8 @@ function TabLink({
 function formatDateTime(input: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
     month: "2-digit",
-    year: "2-digit",
+    year: "numeric",
   }).format(new Date(input));
 }
 
