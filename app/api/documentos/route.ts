@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { DocumentDraftError, resolveDocumentDraft } from "@/lib/documents/generate";
+import { buildApiErrorResponse } from "@/lib/api/errors";
+import { resolveDocumentDraft } from "@/lib/documents/generate";
 import { insertDocumentRecord } from "@/lib/documents/repository";
 import { documentRequestSchema } from "@/lib/documents/schema";
 
@@ -26,20 +26,7 @@ export async function POST(request: NextRequest) {
       title: document.title,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Preencha os campos obrigatórios para gerar o documento." },
-        { status: 400 },
-      );
-    }
-
-    if (error instanceof DocumentDraftError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: "Não foi possível gerar o documento." },
-      { status: 500 },
-    );
+    const { payload, status } = buildApiErrorResponse(error, "Não foi possível gerar o documento.");
+    return NextResponse.json(payload, { status });
   }
 }

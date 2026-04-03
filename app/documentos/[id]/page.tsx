@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, ExternalLink, Printer } from "lucide-react";
-import { getDocumentRecord } from "@/lib/documents/repository";
+import { DocumentSignatureActions } from "@/components/document-signature-actions";
+import {
+  getDocumentRecord,
+  getLatestDocumentSignatureRequest,
+} from "@/lib/documents/repository";
 
 export default async function DocumentoDetailPage({
   params,
@@ -10,6 +14,7 @@ export default async function DocumentoDetailPage({
 }) {
   const { id } = await params;
   const record = getDocumentRecord(Number(id));
+  const signatureRequest = record ? getLatestDocumentSignatureRequest(record.id) : null;
 
   if (!record) {
     notFound();
@@ -39,6 +44,11 @@ export default async function DocumentoDetailPage({
         </div>
 
         <div className="flex items-center gap-2">
+          <DocumentSignatureActions
+            documentId={record.id}
+            initialError={signatureRequest?.last_error ?? null}
+            initialStatus={signatureRequest?.status ?? null}
+          />
           <Link
             href={`/api/documentos/${record.id}/html`}
             target="_blank"

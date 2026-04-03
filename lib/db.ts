@@ -346,6 +346,23 @@ function runMigrations() {
       is_active INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS document_signature_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      document_record_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      provider_envelope_id TEXT,
+      provider_document_id TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      signers_json TEXT NOT NULL DEFAULT '[]',
+      signature_links_json TEXT NOT NULL DEFAULT '{}',
+      last_error TEXT,
+      raw_response_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      sent_at TEXT,
+      signed_at TEXT
+    );
   `);
 
   ensureColumn("sync_state", "status", "TEXT NOT NULL DEFAULT 'idle'");
@@ -519,6 +536,10 @@ function runMigrations() {
   ensureIndex(
     "idx_document_records_template",
     "CREATE INDEX IF NOT EXISTS idx_document_records_template ON document_records (template_key, created_at DESC)",
+  );
+  ensureIndex(
+    "idx_document_signature_requests_document",
+    "CREATE INDEX IF NOT EXISTS idx_document_signature_requests_document ON document_signature_requests (document_record_id, created_at DESC)",
   );
   ensureIndex(
     "idx_document_templates_active",

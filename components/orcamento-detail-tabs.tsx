@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { EntityJsonPanel } from "@/components/entity-detail";
+import { normalizeDocumentNumber } from "@/lib/documents/formatters";
 import { formatCurrencyValue, parseNumericValue } from "@/lib/formatting";
 
 type Passenger = {
@@ -315,7 +316,7 @@ function PassageirosTab({
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <MiniField label="E-mail" value={passenger.email} />
               <MiniField label="Telefone" value={passenger.telefone} />
-              <MiniField label="Documento" value={passenger.documento} />
+              <MiniField label="Documento" value={normalizeDocumentNumber(passenger.documento)} />
               <MiniField label="Nascimento" value={passenger.nascimento} />
             </div>
           </div>

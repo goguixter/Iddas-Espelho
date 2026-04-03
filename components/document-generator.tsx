@@ -12,6 +12,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { normalizeDocumentNumber } from "@/lib/documents/formatters";
 import type {
   RecentFornecedorDocumentOption,
   PessoaDocumentSource,
@@ -165,11 +166,38 @@ async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit) {
   const response = await fetch(input, init);
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(payload?.error ?? "Não foi possível completar a operação.");
+    const text = await response.text();
+    const payload = safeJsonParse(text) as
+      | { details?: string[]; error?: string }
+      | null;
+    throw new Error(resolveApiErrorMessage(payload, "Não foi possível completar a operação."));
   }
 
   return response.json() as Promise<T>;
+}
+
+function safeJsonParse(text: string) {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { error: text };
+  }
+}
+
+function resolveApiErrorMessage(
+  payload: { details?: string[]; error?: string } | null,
+  fallback: string,
+) {
+  const detail = payload?.details?.find((value) => typeof value === "string" && value.trim());
+  return detail ?? payload?.error ?? fallback;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
 function upsertPassenger(current: PessoaDocumentSource[], source: PessoaDocumentSource) {
@@ -391,7 +419,9 @@ function PersonSearchModal({
                       <p className="text-sm font-medium text-[var(--color-ink)]">
                         {option.nome ?? "Sem nome"}
                       </p>
-                      <p className="mt-1 text-xs text-[var(--color-muted)]">{option.cpf ?? option.id}</p>
+                      <p className="mt-1 text-xs text-[var(--color-muted)]">
+                        {normalizeDocumentNumber(option.cpf) || option.id}
+                      </p>
                     </div>
                     <div className="text-right">
                       <span className="block text-xs text-[var(--color-faint)]">
@@ -616,6 +646,8 @@ export function DocumentGenerator({
   const [orcamentoSearchResults, setOrcamentoSearchResults] = useState<RecentOrcamentoDocumentOption[]>([]);
   const [selectedPassengerPeople, setSelectedPassengerPeople] = useState<PessoaDocumentSource[]>([]);
   const [form, setForm] = useState<FormState>(() => createInitialFormState(forcedMode, initialOrcamentoId));
+  const selectedContratante =
+    selectedPassengerPeople.find((item) => item.id === form.pessoaContratanteId) ?? null;
 
   useEffect(() => {
     if (!forcedMode) {
@@ -715,9 +747,11 @@ export function DocumentGenerator({
           setForm((current) => applyOrcamentoAutofill(current, source));
         }
       })
-      .catch(() => {
+      .catch((loadError) => {
         if (active) {
-          setError("Não foi possível carregar os dados automáticos do orçamento.");
+          setError(
+            getErrorMessage(loadError, "Não foi possível carregar os dados automáticos do orçamento."),
+          );
         }
       });
 
@@ -746,9 +780,9 @@ export function DocumentGenerator({
           setForm((current) => applyPessoaAutofill(current, source));
         }
       })
-      .catch(() => {
+      .catch((loadError) => {
         if (active) {
-          setError("Não foi possível carregar os dados da pessoa.");
+          setError(getErrorMessage(loadError, "Não foi possível carregar os dados da pessoa."));
         }
       });
 
@@ -775,12 +809,14 @@ export function DocumentGenerator({
       })
         .then((payload) => {
           if (active) {
+            setError("");
             setPreviewHtml(payload.html);
           }
         })
-        .catch(() => {
+        .catch((previewError) => {
           if (active) {
             setPreviewHtml("");
+            setError(getErrorMessage(previewError, "Não foi possível gerar a prévia do documento."));
           }
         })
         .finally(() => {
@@ -833,11 +869,7 @@ export function DocumentGenerator({
       });
       router.push(`/documentos/${payload.id}`);
     } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Não foi possível gerar o documento.",
-      );
+      setError(getErrorMessage(submitError, "Não foi possível gerar o documento."));
     } finally {
       setLoading(false);
     }
@@ -851,8 +883,8 @@ export function DocumentGenerator({
     try {
       const source = await fetchJson<PessoaDocumentSource>(`/api/documentos/pessoas/${personId}`);
       setSelectedPassengerPeople((current) => upsertPassenger(current, source));
-    } catch {
-      setError("Não foi possível adicionar o passageiro selecionado.");
+    } catch (loadError) {
+      setError(getErrorMessage(loadError, "Não foi possível adicionar o passageiro selecionado."));
     }
   }
 
@@ -894,8 +926,8 @@ export function DocumentGenerator({
       try {
         const source = await fetchJson<PessoaDocumentSource>(`/api/documentos/pessoas/${personId}`);
         setSelectedPassengerPeople((current) => [source, ...current]);
-      } catch {
-        setError("Não foi possível adicionar o contratante como passageiro.");
+      } catch (loadError) {
+        setError(getErrorMessage(loadError, "Não foi possível adicionar o contratante como passageiro."));
       }
     }
 
@@ -1024,10 +1056,7 @@ export function DocumentGenerator({
                           );
                         }}
                       >
-                        {toShortPersonName(
-                          selectedPassengerPeople.find((item) => item.id === form.pessoaContratanteId)?.nome ||
-                            form.pessoaContratanteId,
-                        )}
+                        {toShortPersonName(selectedContratante?.nome || form.pessoaContratanteId)}
                       </RemovableTag>
                     ) : null}
                   </div>

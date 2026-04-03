@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import type { DocumentSignatureRequestRecord } from "@/lib/clicksign/types";
 import type {
   DocumentTemplateRecord,
   DocumentRecord,
@@ -143,6 +144,126 @@ export function insertDocumentRecord(input: Omit<DocumentRecord, "id">) {
     );
 
   return Number(result.lastInsertRowid);
+}
+
+export function getLatestDocumentSignatureRequest(documentRecordId: number) {
+  return db
+    .prepare(
+      `
+        SELECT
+          id,
+          document_record_id,
+          provider,
+          provider_envelope_id,
+          provider_document_id,
+          status,
+          signers_json,
+          signature_links_json,
+          last_error,
+          raw_response_json,
+          created_at,
+          updated_at,
+          sent_at,
+          signed_at
+        FROM document_signature_requests
+        WHERE document_record_id = ?
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT 1
+      `,
+    )
+    .get(documentRecordId) as DocumentSignatureRequestRecord | undefined;
+}
+
+export function insertDocumentSignatureRequest(
+  input: Omit<DocumentSignatureRequestRecord, "id">,
+) {
+  const result = db
+    .prepare(
+      `
+        INSERT INTO document_signature_requests (
+          document_record_id,
+          provider,
+          provider_envelope_id,
+          provider_document_id,
+          status,
+          signers_json,
+          signature_links_json,
+          last_error,
+          raw_response_json,
+          created_at,
+          updated_at,
+          sent_at,
+          signed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    )
+    .run(
+      input.document_record_id,
+      input.provider,
+      input.provider_envelope_id,
+      input.provider_document_id,
+      input.status,
+      input.signers_json,
+      input.signature_links_json,
+      input.last_error,
+      input.raw_response_json,
+      input.created_at,
+      input.updated_at,
+      input.sent_at,
+      input.signed_at,
+    );
+
+  return Number(result.lastInsertRowid);
+}
+
+export function updateDocumentSignatureRequest(
+  id: number,
+  input: Partial<Omit<DocumentSignatureRequestRecord, "id" | "document_record_id" | "provider" | "created_at">>,
+) {
+  const current = db
+    .prepare(
+      `
+        SELECT *
+        FROM document_signature_requests
+        WHERE id = ?
+      `,
+    )
+    .get(id) as DocumentSignatureRequestRecord | undefined;
+
+  if (!current) {
+    return;
+  }
+
+  db.prepare(
+    `
+      UPDATE document_signature_requests
+      SET
+        provider_envelope_id = ?,
+        provider_document_id = ?,
+        status = ?,
+        signers_json = ?,
+        signature_links_json = ?,
+        last_error = ?,
+        raw_response_json = ?,
+        updated_at = ?,
+        sent_at = ?,
+        signed_at = ?
+      WHERE id = ?
+    `,
+  ).run(
+    input.provider_envelope_id ?? current.provider_envelope_id,
+    input.provider_document_id ?? current.provider_document_id,
+    input.status ?? current.status,
+    input.signers_json ?? current.signers_json,
+    input.signature_links_json ?? current.signature_links_json,
+    input.last_error ?? current.last_error,
+    input.raw_response_json ?? current.raw_response_json,
+    input.updated_at ?? current.updated_at,
+    input.sent_at ?? current.sent_at,
+    input.signed_at ?? current.signed_at,
+    id,
+  );
 }
 
 export function searchOrcamentoDocumentOptions(query: string, limit = 12) {
@@ -293,6 +414,7 @@ export function getOrcamentoDocumentSource(
           p.nome AS pessoa_nome,
           p.email AS pessoa_email,
           p.cpf AS pessoa_cpf,
+          p.nascimento AS pessoa_nascimento,
           p.endereco AS pessoa_endereco,
           p.numero AS pessoa_numero,
           p.bairro AS pessoa_bairro,
@@ -352,6 +474,7 @@ export function getOrcamentoDocumentSource(
         pessoa_bairro: string | null;
         pessoa_cidade: string | null;
         pessoa_cep: string | null;
+        pessoa_nascimento: string | null;
         cliente_email: string | null;
         pessoa_endereco: string | null;
         pessoa_estado: string | null;
@@ -386,6 +509,7 @@ export function getOrcamentoDocumentSource(
     clienteEmail: row.cliente_email,
     clienteEndereco: row.pessoa_endereco,
     clienteEstado: row.pessoa_estado,
+    clienteNascimento: row.pessoa_nascimento,
     clienteNome: row.cliente_nome ?? "Cliente",
     clienteNumero: row.pessoa_numero,
     clienteTelefone: row.cliente_telefone,

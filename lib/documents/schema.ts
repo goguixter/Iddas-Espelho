@@ -1,17 +1,23 @@
 import { z } from "zod";
 import { CONTRACT_TEMPLATE_KEY } from "@/lib/documents/types";
 
+const requiredText = (label: string) => z.string().trim().min(1, `${label} é obrigatório.`);
+
 export const documentRequestSchema = z.object({
-  bairro: z.string().trim().min(1),
-  cep: z.string().trim().min(1),
-  cidade: z.string().trim().min(1),
+  bairro: requiredText("Bairro"),
+  cep: requiredText("CEP"),
+  cidade: requiredText("Cidade"),
   condicoesTarifarias: z.string().trim().optional(),
-  estado: z.string().trim().min(2).max(2),
+  estado: z
+    .string()
+    .trim()
+    .min(2, "UF deve ter 2 caracteres.")
+    .max(2, "UF deve ter 2 caracteres."),
   fornecedor: z.string().trim().optional(),
   localizadorReserva: z.string().trim().optional(),
-  logradouro: z.string().trim().min(1),
+  logradouro: requiredText("Logradouro"),
   mode: z.enum(["manual", "orcamento"]).default("orcamento"),
-  numero: z.string().trim().min(1),
+  numero: requiredText("Número"),
   orcamentoId: z.string().trim().optional(),
   passageirosPessoaIds: z.array(z.string().trim().min(1)).optional(),
   pessoaContratanteId: z.string().trim().optional(),

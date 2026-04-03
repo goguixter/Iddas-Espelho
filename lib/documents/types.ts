@@ -46,6 +46,7 @@ export type OrcamentoDocumentSource = {
   clienteEmail: string | null;
   clienteEndereco: string | null;
   clienteEstado: string | null;
+  clienteNascimento: string | null;
   clienteNome: string;
   clienteNumero: string | null;
   clienteTelefone: string | null;

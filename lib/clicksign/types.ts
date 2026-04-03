@@ -1,0 +1,37 @@
+export type ClicksignSignerInput = {
+  birthday?: string | null;
+  documentation?: string | null;
+  email: string;
+  has_documentation?: boolean;
+  name: string;
+  qualificationRole: "contractee" | "contractor";
+};
+
+export type ClicksignEnvelope = {
+  id: string;
+};
+
+export type ClicksignDocument = {
+  id: string;
+};
+
+export type ClicksignSigner = {
+  id: string;
+};
+
+export type DocumentSignatureRequestRecord = {
+  created_at: string;
+  document_record_id: number;
+  id: number;
+  last_error: string | null;
+  provider: string;
+  provider_document_id: string | null;
+  provider_envelope_id: string | null;
+  raw_response_json: string;
+  signature_links_json: string;
+  signed_at: string | null;
+  signers_json: string;
+  sent_at: string | null;
+  status: string;
+  updated_at: string;
+};

@@ -2,7 +2,7 @@ export function toUpperDisplay(value: string | null | undefined) {
   return (value ?? "").toLocaleUpperCase("pt-BR");
 }
 
-export function formatCpfOrCnpj(value: string | null | undefined) {
+export function normalizeDocumentNumber(value: string | null | undefined) {
   const raw = (value ?? "").trim();
   const digits = raw.replace(/\D/g, "");
 
@@ -12,6 +12,18 @@ export function formatCpfOrCnpj(value: string | null | undefined) {
 
   if (digits.length === 14) {
     return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  }
+
+  return raw;
+}
+
+export function formatCpfOrCnpj(value: string | null | undefined) {
+  const raw = (value ?? "").trim();
+  const normalized = normalizeDocumentNumber(value);
+  const digits = normalized.replace(/\D/g, "");
+
+  if (digits.length === 11 || digits.length === 14) {
+    return normalized;
   }
 
   return toUpperDisplay(raw);

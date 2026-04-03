@@ -5,6 +5,7 @@ import {
   EntityJsonPanel,
 } from "@/components/entity-detail";
 import { EntityRelations } from "@/components/entity-relations";
+import { normalizeDocumentNumber } from "@/lib/documents/formatters";
 import { getPessoaDetail } from "@/lib/queries";
 
 export default async function PessoaDetailPage({
@@ -36,7 +37,7 @@ export default async function PessoaDetailPage({
               { label: "Nome", value: detail.nome },
               { label: "E-mail", value: detail.email },
               { label: "Celular", value: detail.celular },
-              { label: "CPF", value: detail.cpf },
+              { label: "CPF", value: normalizeDocumentNumber(detail.cpf) },
               { label: "Nascimento", value: detail.nascimento },
               { label: "Tipos", value: detail.tipos },
               {
