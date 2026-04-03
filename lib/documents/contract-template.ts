@@ -5,6 +5,13 @@ import {
   type OrcamentoDocumentSource,
   type PessoaDocumentSource,
 } from "@/lib/documents/types";
+import {
+  formatCep,
+  formatCpfOrCnpj,
+  formatDateLong,
+  formatDateShort,
+  toUpperDisplay,
+} from "@/lib/documents/formatters";
 
 type ContractDocumentPayload = {
   assinatura: {
@@ -27,9 +34,6 @@ type ContractDocumentPayload = {
     logradouro: string;
     nome: string;
     numero: string;
-  };
-  emissao: {
-    dataHora: string | null;
   };
   orcamento: {
     id: string;
@@ -173,9 +177,6 @@ function buildPayload(
       nome: source.clienteNome,
       numero: input.numero.trim(),
     },
-    emissao: {
-      dataHora: firstNonEmpty(source.createdAt, source.solicitacaoData),
-    },
     orcamento: {
       id: source.id,
       identificador: source.identificador,
@@ -244,9 +245,6 @@ function buildPayloadFromManual(
         "Contratante",
       numero: input.numero.trim(),
     },
-    emissao: {
-      dataHora: contratante?.createdAt ?? null,
-    },
     orcamento: {
       id: firstNonEmpty(input.orcamentoId) ?? "manual",
       identificador: null,
@@ -299,7 +297,7 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
         <tr>
           <td class="cell-left">${escapeHtml(passenger.nome)}</td>
           <td class="cell-center">${escapeHtml(formatCpfOrCnpj(passenger.documento ?? "—"))}</td>
-          <td class="cell-right">${escapeHtml(passenger.dataNascimento ?? "—")}</td>
+          <td class="cell-right">${escapeHtml(formatDateShort(passenger.dataNascimento) || "—")}</td>
         </tr>
       `,
     )
@@ -558,36 +556,6 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
 </html>`;
 }
 
-function toUpperDisplay(value: string | null | undefined) {
-  return (value ?? "").toLocaleUpperCase("pt-BR");
-}
-
-function formatCpfOrCnpj(value: string | null | undefined) {
-  const raw = (value ?? "").trim();
-  const digits = raw.replace(/\D/g, "");
-
-  if (digits.length === 11) {
-    return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-  }
-
-  if (digits.length === 14) {
-    return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
-  }
-
-  return toUpperDisplay(raw);
-}
-
-function formatCep(value: string | null | undefined) {
-  const raw = (value ?? "").trim();
-  const digits = raw.replace(/\D/g, "");
-
-  if (digits.length === 8) {
-    return digits.replace(/(\d{5})(\d{3})/, "$1-$2");
-  }
-
-  return toUpperDisplay(raw);
-}
-
 function extractPassengers(
   raw: Record<string, unknown> | null,
   source: OrcamentoDocumentSource,
@@ -671,36 +639,6 @@ function firstNonEmpty(...values: Array<string | null | undefined>) {
 function inferDocumentLabel(documentNumber: string) {
   const digits = documentNumber.replace(/\D/g, "");
   return digits.length === 11 ? "CPF" : "Passaporte";
-}
-
-function formatDateLong(input: string) {
-  const date = toDate(input);
-
-  if (!date) {
-    return input;
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
-function toDate(input: string) {
-  const trimmed = input.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  const isoLike = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
-    ? `${trimmed}T00:00:00Z`
-    : trimmed.replace(" ", "T");
-  const date = new Date(isoLike);
-
-  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function escapeHtml(value: string) {

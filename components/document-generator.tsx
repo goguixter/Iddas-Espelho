@@ -1,16 +1,11 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-  type FormEvent,
-} from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   FileText,
   LoaderCircle,
   MapPinned,
-  Plus,
   RefreshCcw,
   Search,
   UserRound,
@@ -42,18 +37,172 @@ type FormState = {
   servicoContratado: string;
 };
 
-function getEmptyAutofillFields() {
+const EMPTY_AUTOFILL_FIELDS = {
+  bairro: "",
+  cep: "",
+  cidade: "",
+  estado: "",
+  localizadorReserva: "",
+  logradouro: "",
+  manualContratanteDocumento: "",
+  manualContratanteNome: "",
+  numero: "",
+} as const;
+
+function createInitialFormState(
+  forcedMode: "manual" | "orcamento" | undefined,
+  initialOrcamentoId: string,
+): FormState {
   return {
     bairro: "",
     cep: "",
     cidade: "",
+    condicoesTarifarias: "",
     estado: "",
+    fornecedor: "",
     localizadorReserva: "",
     logradouro: "",
     manualContratanteDocumento: "",
+    manualContratanteDocumentoLabel: "CPF",
     manualContratanteNome: "",
+    mode: forcedMode ?? (initialOrcamentoId ? "orcamento" : "manual"),
     numero: "",
+    orcamentoId: initialOrcamentoId,
+    pessoaContratanteId: "",
+    servicoContratado: "Intermediação na compra de passagens aéreas",
   };
+}
+
+function createEmptyManualFormState(): FormState {
+  return createInitialFormState("manual", "");
+}
+
+function createEmptyOrcamentoFormState(): FormState {
+  return createInitialFormState("orcamento", "");
+}
+
+function createDocumentPayload(form: FormState, passageiros: PessoaDocumentSource[]) {
+  return {
+    ...form,
+    passageirosPessoaIds: passageiros.map((item) => item.id),
+  };
+}
+
+function hasCompleteAddress(form: FormState) {
+  return [
+    form.logradouro,
+    form.numero,
+    form.bairro,
+    form.cep,
+    form.cidade,
+    form.estado,
+  ].every((value) => value.trim());
+}
+
+function canGeneratePreview(form: FormState) {
+  if (!hasCompleteAddress(form)) {
+    return false;
+  }
+
+  if (form.mode === "orcamento") {
+    return Boolean(form.orcamentoId.trim());
+  }
+
+  return Boolean(form.pessoaContratanteId.trim());
+}
+
+function extractString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function extractOrcamentoLocalizador(raw: Record<string, unknown> | null | undefined) {
+  const voos = raw?.voos;
+
+  if (!Array.isArray(voos) || voos.length === 0) {
+    return "";
+  }
+
+  const firstFlight = voos[0];
+
+  if (!firstFlight || typeof firstFlight !== "object" || Array.isArray(firstFlight)) {
+    return "";
+  }
+
+  return extractString((firstFlight as Record<string, unknown>).localizador);
+}
+
+function applyOrcamentoAutofill(current: FormState, source: {
+  clienteBairro?: string | null;
+  clienteCep?: string | null;
+  clienteCidade?: string | null;
+  clienteCpf?: string | null;
+  clienteEndereco?: string | null;
+  clienteEstado?: string | null;
+  clienteNome?: string | null;
+  clienteNumero?: string | null;
+  raw?: Record<string, unknown> | null;
+}) {
+  return {
+    ...current,
+    ...EMPTY_AUTOFILL_FIELDS,
+    bairro: source.clienteBairro || "",
+    cep: source.clienteCep || "",
+    cidade: source.clienteCidade || "",
+    estado: source.clienteEstado || "",
+    localizadorReserva: extractOrcamentoLocalizador(source.raw),
+    logradouro: source.clienteEndereco || "",
+    manualContratanteDocumento: source.clienteCpf || "",
+    manualContratanteNome: source.clienteNome || "",
+    numero: source.clienteNumero || "",
+  };
+}
+
+function applyPessoaAutofill(current: FormState, source: PessoaDocumentSource) {
+  return {
+    ...current,
+    ...EMPTY_AUTOFILL_FIELDS,
+    bairro: source.bairro || "",
+    cep: source.cep || "",
+    cidade: source.cidade || "",
+    estado: source.estado || "",
+    logradouro: source.endereco || "",
+    manualContratanteDocumento: source.cpf || source.passaporte || "",
+    manualContratanteDocumentoLabel: source.cpf ? "CPF" : "Passaporte",
+    manualContratanteNome: source.nome || "",
+    numero: source.numero || "",
+  };
+}
+
+async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit) {
+  const response = await fetch(input, init);
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Não foi possível completar a operação.");
+  }
+
+  return response.json() as Promise<T>;
+}
+
+function upsertPassenger(current: PessoaDocumentSource[], source: PessoaDocumentSource) {
+  return current.some((person) => person.id === source.id) ? current : [...current, source];
+}
+
+function toShortPersonName(value: string | null | undefined) {
+  const normalized = (value ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (normalized.length === 0) {
+    return "";
+  }
+
+  if (normalized.length === 1) {
+    return normalized[0];
+  }
+
+  return `${normalized[0]} ${normalized[normalized.length - 1]}`;
 }
 
 export function DocumentGenerator({
@@ -71,33 +220,13 @@ export function DocumentGenerator({
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
   const [personModalMode, setPersonModalMode] = useState<"contratante" | "passageiro" | null>(null);
+  const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [personSearch, setPersonSearch] = useState("");
   const [personSearchResults, setPersonSearchResults] = useState<RecentPessoaDocumentOption[]>(recentPessoas);
   const [orcamentoSearch, setOrcamentoSearch] = useState("");
-  const [orcamentoSearchResults, setOrcamentoSearchResults] = useState<
-    RecentOrcamentoDocumentOption[]
-  >([]);
+  const [orcamentoSearchResults, setOrcamentoSearchResults] = useState<RecentOrcamentoDocumentOption[]>([]);
   const [selectedPassengerPeople, setSelectedPassengerPeople] = useState<PessoaDocumentSource[]>([]);
-  const [form, setForm] = useState<FormState>({
-    bairro: "",
-    cep: "",
-    cidade: "",
-    condicoesTarifarias: "",
-    estado: "",
-    fornecedor: "",
-    localizadorReserva: "",
-    logradouro: "",
-    manualContratanteDocumento: "",
-    manualContratanteDocumentoLabel: "CPF",
-    manualContratanteNome: "",
-    mode: forcedMode ?? (initialOrcamentoId ? "orcamento" : "manual"),
-    numero: "",
-    orcamentoId: initialOrcamentoId,
-    pessoaContratanteId: "",
-    servicoContratado: "Intermediação na compra de passagens aéreas",
-  });
-
-  const isStandalone = Boolean(forcedMode);
+  const [form, setForm] = useState<FormState>(() => createInitialFormState(forcedMode, initialOrcamentoId));
 
   useEffect(() => {
     if (!forcedMode) {
@@ -121,20 +250,18 @@ export function DocumentGenerator({
 
     let active = true;
     const timeoutId = window.setTimeout(() => {
-      fetch(`/api/documentos/orcamentos?q=${encodeURIComponent(query)}`)
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("Não foi possível buscar orçamentos.");
+      fetchJson<RecentOrcamentoDocumentOption[]>(
+        `/api/documentos/orcamentos?q=${encodeURIComponent(query)}`,
+      )
+        .then((results) => {
+          if (active) {
+            setOrcamentoSearchResults(results);
           }
-          return response.json();
-        })
-        .then((results: RecentOrcamentoDocumentOption[]) => {
-          if (!active) return;
-          setOrcamentoSearchResults(results);
         })
         .catch(() => {
-          if (!active) return;
-          setOrcamentoSearchResults([]);
+          if (active) {
+            setOrcamentoSearchResults([]);
+          }
         });
     }, 250);
 
@@ -149,23 +276,20 @@ export function DocumentGenerator({
       return;
     }
 
-    const query = personSearch.trim();
     let active = true;
     const timeoutId = window.setTimeout(() => {
-      fetch(`/api/documentos/pessoas?q=${encodeURIComponent(query)}`)
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("Não foi possível buscar pessoas.");
+      fetchJson<RecentPessoaDocumentOption[]>(
+        `/api/documentos/pessoas?q=${encodeURIComponent(personSearch.trim())}`,
+      )
+        .then((results) => {
+          if (active) {
+            setPersonSearchResults(results);
           }
-          return response.json();
-        })
-        .then((results: RecentPessoaDocumentOption[]) => {
-          if (!active) return;
-          setPersonSearchResults(results);
         })
         .catch(() => {
-          if (!active) return;
-          setPersonSearchResults([]);
+          if (active) {
+            setPersonSearchResults([]);
+          }
         });
     }, 200);
 
@@ -176,43 +300,37 @@ export function DocumentGenerator({
   }, [personModalMode, personSearch]);
 
   useEffect(() => {
-    if (form.mode !== "orcamento" || !form.orcamentoId.trim()) {
-      if (form.mode === "orcamento") {
-        setForm((current) => ({ ...current, ...getEmptyAutofillFields() }));
-      }
+    if (form.mode !== "orcamento") {
+      return;
+    }
+
+    if (!form.orcamentoId.trim()) {
+      setForm((current) => ({ ...current, ...EMPTY_AUTOFILL_FIELDS }));
       return;
     }
 
     let active = true;
-    fetch(`/api/documentos/orcamentos/${form.orcamentoId}`)
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Não foi possível carregar os dados do orçamento.");
-        }
-        return response.json();
-      })
+    fetchJson<{
+      clienteBairro?: string | null;
+      clienteCep?: string | null;
+      clienteCidade?: string | null;
+      clienteCpf?: string | null;
+      clienteEndereco?: string | null;
+      clienteEstado?: string | null;
+      clienteNome?: string | null;
+      clienteNumero?: string | null;
+      raw?: Record<string, unknown> | null;
+    }>(`/api/documentos/orcamentos/${form.orcamentoId}`)
       .then((source) => {
-        if (!active) return;
-        setForm((current) => ({
-          ...current,
-          ...getEmptyAutofillFields(),
-          bairro: source.clienteBairro || "",
-          cep: source.clienteCep || "",
-          cidade: source.clienteCidade || "",
-          estado: source.clienteEstado || "",
-          localizadorReserva: extractString(source.raw?.voos?.[0]?.localizador),
-          logradouro: source.clienteEndereco || "",
-          manualContratanteDocumento: source.clienteCpf || "",
-          manualContratanteNome: source.clienteNome || "",
-          numero: source.clienteNumero || "",
-        }));
+        if (active) {
+          setForm((current) => applyOrcamentoAutofill(current, source));
+        }
       })
       .catch(() => {
         if (active) {
           setError("Não foi possível carregar os dados automáticos do orçamento.");
         }
-      })
-      .finally(() => {});
+      });
 
     return () => {
       active = false;
@@ -220,47 +338,31 @@ export function DocumentGenerator({
   }, [form.mode, form.orcamentoId]);
 
   useEffect(() => {
-    if (form.mode !== "manual" || !form.pessoaContratanteId.trim()) {
-      if (form.mode === "manual") {
-        setForm((current) => ({
-          ...current,
-          ...getEmptyAutofillFields(),
-          manualContratanteDocumentoLabel: "CPF",
-        }));
-      }
+    if (form.mode !== "manual") {
+      return;
+    }
+
+    if (!form.pessoaContratanteId.trim()) {
+      setForm((current) => ({
+        ...current,
+        ...EMPTY_AUTOFILL_FIELDS,
+        manualContratanteDocumentoLabel: "CPF",
+      }));
       return;
     }
 
     let active = true;
-    fetch(`/api/documentos/pessoas/${form.pessoaContratanteId}`)
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Não foi possível carregar a pessoa selecionada.");
+    fetchJson<PessoaDocumentSource>(`/api/documentos/pessoas/${form.pessoaContratanteId}`)
+      .then((source) => {
+        if (active) {
+          setForm((current) => applyPessoaAutofill(current, source));
         }
-        return response.json();
-      })
-      .then((source: PessoaDocumentSource) => {
-        if (!active) return;
-        setForm((current) => ({
-          ...current,
-          ...getEmptyAutofillFields(),
-          bairro: source.bairro || "",
-          cep: source.cep || "",
-          cidade: source.cidade || "",
-          estado: source.estado || "",
-          logradouro: source.endereco || "",
-          manualContratanteDocumento: source.cpf || source.passaporte || "",
-          manualContratanteDocumentoLabel: source.cpf ? "CPF" : "Passaporte",
-          manualContratanteNome: source.nome || "",
-          numero: source.numero || "",
-        }));
       })
       .catch(() => {
         if (active) {
           setError("Não foi possível carregar os dados da pessoa.");
         }
-      })
-      .finally(() => {});
+      });
 
     return () => {
       active = false;
@@ -268,20 +370,7 @@ export function DocumentGenerator({
   }, [form.mode, form.pessoaContratanteId]);
 
   useEffect(() => {
-    const hasAddress =
-      form.logradouro.trim() &&
-      form.numero.trim() &&
-      form.bairro.trim() &&
-      form.cep.trim() &&
-      form.cidade.trim() &&
-      form.estado.trim();
-    const canPreviewOrcamento = form.mode === "orcamento" && form.orcamentoId.trim() && hasAddress;
-    const canPreviewManual =
-      form.mode === "manual" &&
-      hasAddress &&
-      (form.pessoaContratanteId.trim() || form.manualContratanteNome.trim());
-
-    if (!canPreviewOrcamento && !canPreviewManual) {
+    if (!canGeneratePreview(form)) {
       setPreviewHtml("");
       setLoadingPreview(false);
       return;
@@ -291,31 +380,25 @@ export function DocumentGenerator({
     setLoadingPreview(true);
 
     const timeoutId = window.setTimeout(() => {
-      fetch("/api/documentos/preview", {
-        body: JSON.stringify({
-          ...form,
-          passageirosPessoaIds: selectedPassengerPeople.map((item) => item.id),
-        }),
+      fetchJson<{ html: string }>("/api/documentos/preview", {
+        body: JSON.stringify(createDocumentPayload(form, selectedPassengerPeople)),
         headers: { "content-type": "application/json" },
         method: "POST",
       })
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("Não foi possível gerar a prévia.");
+        .then((payload) => {
+          if (active) {
+            setPreviewHtml(payload.html);
           }
-          return response.json();
-        })
-        .then((payload: { html: string }) => {
-          if (!active) return;
-          setPreviewHtml(payload.html);
         })
         .catch(() => {
-          if (!active) return;
-          setPreviewHtml("");
+          if (active) {
+            setPreviewHtml("");
+          }
         })
         .finally(() => {
-          if (!active) return;
-          setLoadingPreview(false);
+          if (active) {
+            setLoadingPreview(false);
+          }
         });
     }, 300);
 
@@ -325,27 +408,41 @@ export function DocumentGenerator({
     };
   }, [form, selectedPassengerPeople]);
 
+  function updateField(key: keyof FormState, value: string) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function resetCurrentMode() {
+    setError("");
+    setPreviewHtml("");
+    setLoadingPreview(false);
+    setOrcamentoSearch("");
+    setOrcamentoSearchResults([]);
+    setPersonSearch("");
+    setPersonSearchResults(recentPessoas);
+    setServiceModalOpen(false);
+    setPersonModalMode(null);
+
+    if (form.mode === "orcamento") {
+      setForm(createEmptyOrcamentoFormState());
+      return;
+    }
+
+    setSelectedPassengerPeople([]);
+    setForm(createEmptyManualFormState());
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      const response = await fetch("/api/documentos", {
-        body: JSON.stringify({
-          ...form,
-          passageirosPessoaIds: selectedPassengerPeople.map((item) => item.id),
-        }),
+      const payload = await fetchJson<{ id: number }>("/api/documentos", {
+        body: JSON.stringify(createDocumentPayload(form, selectedPassengerPeople)),
         headers: { "content-type": "application/json" },
         method: "POST",
       });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error ?? "Não foi possível gerar o documento.");
-      }
-
-      const payload = (await response.json()) as { id: number };
       router.push(`/documentos/${payload.id}`);
     } catch (submitError) {
       setError(
@@ -358,22 +455,14 @@ export function DocumentGenerator({
     }
   }
 
-  function updateField(key: keyof FormState, value: string) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
-
   async function addPassengerFromBase(personId: string) {
-    if (!personId || selectedPassengerPeople.some((person) => person.id === personId)) {
+    if (!personId) {
       return;
     }
 
     try {
-      const response = await fetch(`/api/documentos/pessoas/${personId}`);
-      if (!response.ok) {
-        throw new Error("Pessoa não encontrada.");
-      }
-      const source = (await response.json()) as PessoaDocumentSource;
-      setSelectedPassengerPeople((current) => [...current, source]);
+      const source = await fetchJson<PessoaDocumentSource>(`/api/documentos/pessoas/${personId}`);
+      setSelectedPassengerPeople((current) => upsertPassenger(current, source));
     } catch {
       setError("Não foi possível adicionar o passageiro selecionado.");
     }
@@ -392,99 +481,53 @@ export function DocumentGenerator({
     setPersonSearchResults(recentPessoas);
   }
 
-  function defineContratanteFromBase(personId: string) {
+  function serviceSummary() {
+    return [
+      form.localizadorReserva.trim() || null,
+      form.servicoContratado.trim() || null,
+      form.fornecedor.trim() || null,
+      form.condicoesTarifarias.trim() || null,
+    ].filter(Boolean) as string[];
+  }
+
+  async function defineContratanteFromBase(personId: string) {
     if (!personId) {
       return;
     }
 
     setError("");
     updateField("pessoaContratanteId", personId);
+
     if (!selectedPassengerPeople.some((person) => person.id === personId)) {
-      void fetch(`/api/documentos/pessoas/${personId}`)
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("Pessoa não encontrada.");
-          }
-          return response.json();
-        })
-        .then((source: PessoaDocumentSource) => {
-          setSelectedPassengerPeople((current) =>
-            current.some((person) => person.id === source.id) ? current : [source, ...current],
-          );
-        })
-        .catch(() => {
-          setError("Não foi possível adicionar o contratante como passageiro.");
-        });
+      try {
+        const source = await fetchJson<PessoaDocumentSource>(`/api/documentos/pessoas/${personId}`);
+        setSelectedPassengerPeople((current) => [source, ...current]);
+      } catch {
+        setError("Não foi possível adicionar o contratante como passageiro.");
+      }
     }
+
     closePersonModal();
   }
 
   function handlePersonSelection(option: RecentPessoaDocumentOption) {
     if (personModalMode === "contratante") {
-      defineContratanteFromBase(option.id);
+      void defineContratanteFromBase(option.id);
       return;
     }
 
-    void addPassengerFromBase(option.id).finally(() => {
-      closePersonModal();
-    });
+    void addPassengerFromBase(option.id).finally(closePersonModal);
   }
 
   return (
-    <section
-      className={
-        isStandalone
-          ? "flex h-full min-h-0 flex-col"
-        : "rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]"
-      }
-    >
-      {isStandalone ? null : (
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
-              Template Base
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
-              Contrato de intermediação
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm text-[var(--color-muted)]">
-              Gere por orçamento com variáveis herdadas automaticamente ou monte manualmente
-              usando pessoas da base e campos livres.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-right">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-faint)]">
-              Template
-            </p>
-            <p className="mt-1 text-sm font-medium text-[var(--color-ink)]">Contrato v1</p>
-          </div>
-        </div>
-      )}
-
-      {!forcedMode ? (
-        <div className="mt-5 inline-flex rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-1">
-          <ModeButton
-            active={form.mode === "orcamento"}
-            label="Por orçamento"
-            onClick={() => updateField("mode", "orcamento")}
-          />
-          <ModeButton
-            active={form.mode === "manual"}
-            label="Manual"
-            onClick={() => updateField("mode", "manual")}
-          />
-        </div>
-      ) : null}
-
-      <form onSubmit={handleSubmit} className={`${isStandalone ? "flex min-h-0 flex-1 flex-col space-y-5" : "mt-5 space-y-5"}`}>
+    <section className="flex h-full min-h-0 flex-col">
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col space-y-5">
         <div
-          className={`grid ${isStandalone ? "min-h-0 flex-1" : ""} gap-4 ${
-            form.mode === "orcamento"
-              ? "xl:grid-cols-[0.8fr_1.2fr]"
-              : "xl:grid-cols-[0.85fr_1.15fr]"
+          className={`grid min-h-0 flex-1 gap-4 ${
+            "xl:grid-cols-[0.8fr_1.2fr]"
           }`}
         >
-          <section className={`min-h-0 rounded-[24px] border border-[var(--color-line)] p-4 ${isStandalone ? "bg-[var(--color-surface)]" : form.mode === "orcamento" ? "bg-[var(--color-surface)]" : "bg-[var(--color-panel)]"}`}>
+          <section className="min-h-0 rounded-[24px] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
             {form.mode === "orcamento" ? (
               <div className="flex h-full min-h-0 flex-col gap-4">
                 <SearchField
@@ -540,7 +583,7 @@ export function DocumentGenerator({
                   </div>
                 ) : null}
 
-                <div className="pt-1">
+                <div className="grid grid-cols-[7fr_3fr] gap-3 pt-1">
                   <button
                     type="submit"
                     disabled={loading}
@@ -553,98 +596,172 @@ export function DocumentGenerator({
                     )}
                     Gerar documento
                   </button>
+                  <button
+                    type="button"
+                    onClick={resetCurrentMode}
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-sm font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                  >
+                    Limpar dados
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-5">
-                <div className="rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-                  <div className="flex items-center gap-2 text-[var(--color-ink)]">
-                    <Users className="h-4 w-4 text-[var(--color-accent)]" />
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                      Pessoas do contrato
-                    </h3>
-                  </div>
+              <div className="flex h-full min-h-0 flex-col gap-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
+                  Defina partes e dados do contrato
+                </p>
 
-                  <div className="mt-4 space-y-4">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2 text-[var(--color-ink)]">
                     <button
                       type="button"
-                      onClick={() => openPersonModal(form.pessoaContratanteId ? "passageiro" : "contratante")}
-                      className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                      onClick={() => openPersonModal("contratante")}
+                      className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
                     >
-                      {form.pessoaContratanteId ? <Plus className="h-4 w-4" /> : <UserRound className="h-4 w-4" />}
-                      {form.pessoaContratanteId ? "Adicionar passageiro" : "Definir contratante"}
+                      <UserRound className="h-4 w-4" />
+                      Contratante
                     </button>
+
                     {form.pessoaContratanteId ? (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-faint)]">
-                          Contratante
-                        </p>
-                        <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
-                          {form.manualContratanteNome || form.pessoaContratanteId}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setError("");
-                              updateField("pessoaContratanteId", "");
-                              setSelectedPassengerPeople((current) =>
-                                current.filter((item) => item.id !== form.pessoaContratanteId),
-                              );
-                            }}
-                            className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                        {toShortPersonName(form.manualContratanteNome || form.pessoaContratanteId)}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError("");
+                            updateField("pessoaContratanteId", "");
+                            setSelectedPassengerPeople((current) =>
+                              current.filter((item) => item.id !== form.pessoaContratanteId),
+                            );
+                          }}
+                          className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     ) : null}
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-faint)]">
-                        Passageiros
-                      </p>
-                      <div className="table-scroll max-h-28 overflow-auto pr-1">
-                        <div className="flex flex-wrap gap-2">
-                          {selectedPassengerPeople
-                            .filter((person) => person.id !== form.pessoaContratanteId)
-                            .map((person) => (
-                              <span
-                                key={person.id}
-                                className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-ink)]"
+                  </div>
+                </div>
+
+                <div className="space-y-2 border-t border-[var(--color-line)] pt-4">
+                  <div className="flex flex-wrap items-center gap-2 text-[var(--color-ink)]">
+                    <button
+                      type="button"
+                      onClick={() => openPersonModal("passageiro")}
+                      className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                    >
+                      <Users className="h-4 w-4" />
+                      Passageiros
+                    </button>
+
+                    <div className="table-scroll max-h-20 overflow-auto pr-1">
+                      <div className="flex flex-wrap gap-2">
+                        {selectedPassengerPeople
+                          .filter((person) => person.id !== form.pessoaContratanteId)
+                          .map((person) => (
+                            <span
+                              key={person.id}
+                              className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]"
+                            >
+                              {toShortPersonName(person.nome ?? person.id)}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedPassengerPeople((current) =>
+                                    current.filter((item) => item.id !== person.id),
+                                  )
+                                }
+                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
                               >
-                                {person.nome ?? person.id}
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedPassengerPeople((current) =>
-                                      current.filter((item) => item.id !== person.id),
-                                    )
-                                  }
-                                  className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </span>
-                            ))}
-                        </div>
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          ))}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-                  <div className="flex items-center gap-2 text-[var(--color-ink)]">
-                    <FileText className="h-4 w-4 text-[var(--color-accent)]" />
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                      Dados do serviço
-                    </h3>
-                  </div>
+                {serviceSummary().length > 0 ? (
+                  <div className="space-y-2 border-t border-[var(--color-line)] pt-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setServiceModalOpen(true)}
+                        className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Dados do serviço
+                      </button>
 
-                  <div className="mt-4 grid gap-3">
-                    <InputField label="Localizador da reserva" value={form.localizadorReserva} onChange={(value) => updateField("localizadorReserva", value)} />
-                    <InputField label="Serviço contratado" value={form.servicoContratado} onChange={(value) => updateField("servicoContratado", value)} />
-                    <InputField label="Fornecedor" value={form.fornecedor} onChange={(value) => updateField("fornecedor", value)} />
-                    <TextAreaField label="Condições tarifárias" value={form.condicoesTarifarias} onChange={(value) => updateField("condicoesTarifarias", value)} />
+                      <div className="table-scroll max-h-20 overflow-auto pr-1">
+                        <div className="flex flex-wrap gap-2">
+                          {form.localizadorReserva.trim() ? (
+                            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                              Localizador: {form.localizadorReserva.trim()}
+                              <button
+                                type="button"
+                                onClick={() => updateField("localizadorReserva", "")}
+                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          ) : null}
+                          {form.servicoContratado.trim() ? (
+                            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                              Serviço: {form.servicoContratado.trim()}
+                              <button
+                                type="button"
+                                onClick={() => updateField("servicoContratado", "")}
+                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          ) : null}
+                          {form.fornecedor.trim() ? (
+                            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                              Fornecedor: {form.fornecedor.trim()}
+                              <button
+                                type="button"
+                                onClick={() => updateField("fornecedor", "")}
+                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          ) : null}
+                          {form.condicoesTarifarias.trim() ? (
+                            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-1.5 text-xs text-[var(--color-ink)]">
+                              Condições definidas
+                              <button
+                                type="button"
+                                onClick={() => updateField("condicoesTarifarias", "")}
+                                className="cursor-pointer text-[var(--color-muted)] transition hover:text-rose-300"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2 border-t border-[var(--color-line)] pt-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setServiceModalOpen(true)}
+                        className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Dados do serviço
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {error ? (
                   <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
@@ -652,57 +769,66 @@ export function DocumentGenerator({
                   </div>
                 ) : null}
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loading ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <FileText className="h-4 w-4" />
-                  )}
-                  Gerar documento
-                </button>
+                <div className="mt-auto grid grid-cols-[7fr_3fr] gap-3 pt-1">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileText className="h-4 w-4" />
+                    )}
+                    Gerar documento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetCurrentMode}
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3 text-sm font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                  >
+                    Limpar dados
+                  </button>
+                </div>
               </div>
             )}
           </section>
 
           <section className="flex min-h-0 flex-col rounded-[24px] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-              <div className="flex items-center justify-between gap-3 text-[var(--color-ink)]">
-                <div className="flex items-center gap-2">
-                  <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-                    {form.mode === "orcamento" ? "Preview automático" : "Preview do contrato"}
-                  </h3>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-[var(--color-ink)]">Contrato v1</span>
-                  {loadingPreview ? (
-                    <span className="inline-flex items-center gap-2 text-xs text-[var(--color-muted)]">
-                      <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
-                      Atualizando
-                    </span>
-                  ) : null}
-                </div>
+            <div className="flex items-center justify-between gap-3 text-[var(--color-ink)]">
+              <div className="flex items-center gap-2">
+                <MapPinned className="h-4 w-4 text-[var(--color-accent)]" />
+                <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
+                  {form.mode === "orcamento" ? "Preview automático" : "Preview do contrato"}
+                </h3>
               </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-[var(--color-ink)]">Contrato v1</span>
+                {loadingPreview ? (
+                  <span className="inline-flex items-center gap-2 text-xs text-[var(--color-muted)]">
+                    <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
+                    Atualizando
+                  </span>
+                ) : null}
+              </div>
+            </div>
 
-              <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)]">
-                {previewHtml ? (
-                  <iframe
-                    title="Prévia do contrato"
-                    srcDoc={previewHtml}
-                    className="h-full w-full bg-white"
-                    style={{ zoom: 0.68 }}
-                  />
-                ) : (
-                  <div className="flex h-full min-h-[720px] items-center justify-center px-6 text-center text-sm text-[var(--color-muted)]">
-                    {form.mode === "orcamento"
-                      ? "Selecione um orçamento para gerar a prévia automática do contrato."
-                      : "Selecione o contratante e preencha os dados do serviço para gerar a prévia do contrato."}
-                  </div>
-                )}
-              </div>
+            <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[22px] border border-[var(--color-line)] bg-[var(--color-panel)]">
+              {previewHtml ? (
+                <iframe
+                  title="Prévia do contrato"
+                  srcDoc={previewHtml}
+                  className="h-full w-full bg-white"
+                  style={{ zoom: 0.84 }}
+                />
+              ) : (
+                <div className="flex h-full min-h-[720px] items-center justify-center px-6 text-center text-sm text-[var(--color-muted)]">
+                  {form.mode === "orcamento"
+                    ? "Selecione um orçamento para gerar a prévia automática do contrato."
+                    : "Selecione o contratante e preencha os dados do serviço para gerar a prévia do contrato."}
+                </div>
+              )}
+            </div>
           </section>
         </div>
       </form>
@@ -766,35 +892,52 @@ export function DocumentGenerator({
           </div>
         </div>
       ) : null}
+
+      {serviceModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm">
+          <div className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgba(15,23,42,0.4)]">
+            <div className="flex items-center justify-between gap-4 border-b border-[var(--color-line)] px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
+                  Dados do serviço
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
+                  Definir informações do contrato
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setServiceModalOpen(false)}
+                className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="table-scroll min-h-0 flex-1 overflow-auto px-6 py-5 pr-5">
+              <div className="grid gap-3">
+                <div className="grid gap-3 md:grid-cols-[0.4fr_0.6fr]">
+                  <InputField label="Localizador da reserva" value={form.localizadorReserva} onChange={(value) => updateField("localizadorReserva", value)} />
+                  <InputField label="Fornecedor" value={form.fornecedor} onChange={(value) => updateField("fornecedor", value)} />
+                </div>
+                <InputField label="Serviço contratado" value={form.servicoContratado} onChange={(value) => updateField("servicoContratado", value)} />
+                <TextAreaField label="Condições tarifárias" value={form.condicoesTarifarias} onChange={(value) => updateField("condicoesTarifarias", value)} />
+              </div>
+            </div>
+
+            <div className="border-t border-[var(--color-line)] px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setServiceModalOpen(false)}
+                className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105"
+              >
+                Salvar dados do serviço
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
-  );
-}
-
-function extractString(value: unknown) {
-  return typeof value === "string" ? value : "";
-}
-
-function ModeButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`cursor-pointer rounded-xl px-4 py-2 text-sm transition ${
-        active
-          ? "bg-[var(--color-accent)] font-semibold text-slate-950"
-          : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -830,7 +973,6 @@ function SearchField({
     </label>
   );
 }
-
 
 function InputField({
   label,

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ExternalLink, Printer } from "lucide-react";
+import { ChevronLeft, ExternalLink, Printer } from "lucide-react";
 import { getDocumentRecord } from "@/lib/documents/repository";
 
 export default async function DocumentoDetailPage({
@@ -29,6 +29,13 @@ export default async function DocumentoDetailPage({
             Template {record.template_key} v{record.template_version} • Orçamento{" "}
             {record.entity_id}
           </p>
+          <Link
+            href="/documentos?tab=historico"
+            className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Voltar aos documentos
+          </Link>
         </div>
 
         <div className="flex items-center gap-2">

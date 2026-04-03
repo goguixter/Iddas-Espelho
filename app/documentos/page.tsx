@@ -1,14 +1,19 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ExternalLink, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { DocumentGenerator } from "@/components/document-generator";
+import { DocumentHistoryList } from "@/components/document-history-list";
 import { DocumentTemplateManager } from "@/components/document-template-manager";
 import { buildContractTemplatePreview } from "@/lib/documents/contract-template";
 import {
-  listDocumentTemplates,
+  countDocumentRecords,
   getRecentPessoaDocumentOptions,
+  listDocumentTemplates,
   listDocumentRecords,
 } from "@/lib/documents/repository";
+
+const DOCUMENT_TABS = ["template", "orcamento", "manual", "historico"] as const;
+type DocumentTab = (typeof DOCUMENT_TABS)[number];
 
 export default async function DocumentosPage({
   searchParams,
@@ -16,12 +21,13 @@ export default async function DocumentosPage({
   searchParams: Promise<{ orcamentoId?: string; tab?: string }>;
 }) {
   const { orcamentoId = "", tab = "template" } = await searchParams;
-  const activeTab = ["template", "orcamento", "manual", "historico"].includes(tab)
-    ? (tab as "template" | "orcamento" | "manual" | "historico")
+  const activeTab = DOCUMENT_TABS.includes(tab as DocumentTab)
+    ? (tab as DocumentTab)
     : "template";
   const copy = getDocumentsTabCopy(activeTab);
   const preview = buildContractTemplatePreview();
-  const [documents, recentPessoas, templates] = await Promise.all([
+  const [documentCount, documents, recentPessoas, templates] = await Promise.all([
+    countDocumentRecords(),
     activeTab === "historico" ? listDocumentRecords() : Promise.resolve([]),
     activeTab === "manual" ? getRecentPessoaDocumentOptions() : Promise.resolve([]),
     activeTab === "template" ? listDocumentTemplates() : Promise.resolve([]),
@@ -46,7 +52,7 @@ export default async function DocumentosPage({
             Gerados
           </p>
           <p className="mt-1 text-2xl font-semibold text-[var(--color-ink)]">
-            {activeTab === "historico" ? documents.length : 1}
+            {documentCount}
           </p>
         </div>
       </div>
@@ -98,40 +104,7 @@ export default async function DocumentosPage({
             </div>
 
             <div className="table-scroll mt-5 min-h-0 flex-1 overflow-auto pr-1">
-              {documents.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[var(--color-line)] bg-[var(--color-panel)] px-5 py-6 text-sm text-[var(--color-muted)]">
-                  Nenhum documento foi gerado ainda.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {documents.map((document) => (
-                    <article
-                      key={document.id}
-                      className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-faint)]">
-                            {document.template_key}
-                          </p>
-                          <h3 className="mt-1 text-base font-semibold text-[var(--color-ink)]">
-                            {document.title}
-                          </h3>
-                          <p className="mt-2 text-sm text-[var(--color-muted)]">
-                            Orçamento {document.entity_id} • {formatDateTime(document.created_at)}
-                          </p>
-                        </div>
-                        <Link
-                          href={`/documentos/${document.id}`}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Link>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
+              <DocumentHistoryList documents={documents} />
             </div>
           </section>
         )}
@@ -163,17 +136,7 @@ function TabLink({
   );
 }
 
-function formatDateTime(input: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(input));
-}
-
-function getDocumentsTabCopy(
-  tab: "template" | "orcamento" | "manual" | "historico",
-) {
+function getDocumentsTabCopy(tab: DocumentTab) {
   switch (tab) {
     case "orcamento":
       return {

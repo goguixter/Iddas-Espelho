@@ -65,6 +65,19 @@ export function listDocumentRecords(limit = 20) {
     .all(limit) as DocumentRecord[];
 }
 
+export function countDocumentRecords() {
+  const row = db
+    .prepare(
+      `
+        SELECT COUNT(*) AS total
+        FROM document_records
+      `,
+    )
+    .get() as { total: number };
+
+  return row.total;
+}
+
 export function getDocumentRecord(id: number) {
   return db
     .prepare(
@@ -85,6 +98,17 @@ export function getDocumentRecord(id: number) {
       `,
     )
     .get(id) as DocumentRecord | undefined;
+}
+
+export function deleteDocumentRecord(id: number) {
+  return db
+    .prepare(
+      `
+        DELETE FROM document_records
+        WHERE id = ?
+      `,
+    )
+    .run(id);
 }
 
 export function insertDocumentRecord(input: Omit<DocumentRecord, "id">) {
@@ -118,25 +142,6 @@ export function insertDocumentRecord(input: Omit<DocumentRecord, "id">) {
     );
 
   return Number(result.lastInsertRowid);
-}
-
-export function getRecentOrcamentoDocumentOptions(limit = 5) {
-  return db
-    .prepare(
-      `
-        SELECT
-          vw.id,
-          vw.identificador,
-          COALESCE(vw.cliente_nome_db, vw.solicitacao_nome) AS cliente_nome,
-          vw.situacao_nome,
-          vw.situacao_cor
-        FROM orcamentos_projection vw
-        WHERE UPPER(COALESCE(vw.situacao_nome, '')) = 'APROVADO'
-        ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
-        LIMIT ?
-      `,
-    )
-    .all(limit) as RecentOrcamentoDocumentOption[];
 }
 
 export function searchOrcamentoDocumentOptions(query: string, limit = 12) {
