@@ -1,3 +1,4 @@
+import { safeJsonParse } from "@/lib/api/json";
 import { env } from "@/lib/env";
 
 export class ClicksignError extends Error {
@@ -40,15 +41,6 @@ export async function clicksignRequest<T>(path: string, init?: RequestInit) {
 
   return body as T;
 }
-
-function safeJsonParse(text: string) {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
 function extractClicksignErrorMessage(body: unknown) {
   if (typeof body === "string" && body.trim()) {
     return body;

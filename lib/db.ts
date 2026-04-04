@@ -9,17 +9,24 @@ fs.mkdirSync(dataDir, { recursive: true });
 
 const globalForDb = globalThis as unknown as {
   iddasDb?: Database.Database;
+  iddasDbInitialized?: boolean;
 };
 
-const instance = globalForDb.iddasDb ?? new Database(dbPath);
+const instance = globalForDb.iddasDb ?? new Database(dbPath, {
+  timeout: 5000,
+});
 instance.pragma("journal_mode = WAL");
+instance.pragma("busy_timeout = 5000");
 
 export const db = instance;
 
-runMigrations();
-
 if (!globalForDb.iddasDb) {
   globalForDb.iddasDb = db;
+}
+
+if (!globalForDb.iddasDbInitialized) {
+  runMigrations();
+  globalForDb.iddasDbInitialized = true;
 }
 
 function runMigrations() {
@@ -604,10 +611,7 @@ function runMigrations() {
     `
       INSERT INTO document_templates (key, title, description, version, is_active, updated_at)
       VALUES (@key, @title, @description, @version, @is_active, @updated_at)
-      ON CONFLICT(key) DO UPDATE SET
-        title = excluded.title,
-        description = excluded.description,
-        version = excluded.version
+      ON CONFLICT(key) DO NOTHING
     `,
   ).run({
     description: "Contrato base de intermediação e consultoria com preenchimento automático e geração em HTML/PDF.",
@@ -617,8 +621,6 @@ function runMigrations() {
     updated_at: new Date().toISOString(),
     version: 1,
   });
-
-  refreshProjectionTables();
 }
 
 function ensureColumn(table: string, column: string, definition: string) {
@@ -642,13 +644,6 @@ function ensureColumn(table: string, column: string, definition: string) {
 
 function ensureIndex(_name: string, sql: string) {
   db.exec(sql);
-}
-
-function refreshProjectionTables() {
-  refreshOrcamentosProjectionByIds(readAllIds("orcamentos"));
-  refreshSolicitacoesProjectionByIds(readAllIds("solicitacoes"));
-  refreshVendasProjectionByIds(readAllIds("vendas"));
-  refreshVoosProjectionByIds(readAllIds("voos"));
 }
 
 export function refreshOrcamentosProjectionByIds(ids: string[]) {
@@ -995,12 +990,6 @@ function replaceProjectionRows(input: {
     db.prepare(`${input.deleteSql} ${placeholders}`).run(...input.ids);
     db.prepare(`${input.insertSql} ${placeholders}`).run(...input.ids);
   })();
-}
-
-function readAllIds(table: "orcamentos" | "solicitacoes" | "vendas" | "voos") {
-  return (db.prepare(`SELECT id FROM ${table}`).all() as Array<{ id: string }>).map(
-    (row) => row.id,
-  );
 }
 
 function readIdsByQuery(sqlPrefix: string, ids: string[]) {

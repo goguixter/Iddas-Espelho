@@ -1,4 +1,14 @@
 import { clicksignRequest } from "@/lib/clicksign/client";
+import {
+  buildAuthRequirementPayload,
+  buildDocumentPayload,
+  buildEnvelopePayload,
+  buildEnvelopeStatusPayload,
+  buildNotificationPayload,
+  buildQualificationRequirementPayload,
+  buildSignerPayload,
+  normalizeBirthday,
+} from "@/lib/clicksign/payloads";
 import type { ClicksignSignerInput } from "@/lib/clicksign/types";
 import { env } from "@/lib/env";
 import { normalizeDocumentNumber } from "@/lib/documents/formatters";
@@ -40,16 +50,8 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
   try {
     const pdfBuffer = await renderDocumentPdf(document.html_snapshot);
     const base64 = `data:application/pdf;base64,${pdfBuffer.toString("base64")}`;
-    const envelopeAttributes = {
-      auto_close: true,
-      block_after_refusal: false,
-      deadline_at: buildEnvelopeDeadlineAt(),
-      default_message: buildDefaultEnvelopeMessage(document.title),
-      default_subject: buildDefaultEnvelopeSubject(document.title),
-      locale: "pt-BR",
-      name: document.title,
-      remind_interval: 3,
-    };
+    const envelopePayload = buildEnvelopePayload(document.title);
+    const envelopeAttributes = envelopePayload.data.attributes;
 
     logSync("info", "document.clicksign.envelope-payload", {
       documentId: document.id,
@@ -62,12 +64,7 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
       "/api/v3/envelopes",
       () =>
         clicksignRequest<{ data: { id: string } }>("/api/v3/envelopes", {
-          body: JSON.stringify({
-            data: {
-              type: "envelopes",
-              attributes: envelopeAttributes,
-            },
-          }),
+          body: JSON.stringify(envelopePayload),
           method: "POST",
         }),
     );
@@ -80,15 +77,7 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
       `/api/v3/envelopes/${envelopeId}/documents`,
       () =>
         clicksignRequest<{ data: { id: string } }>(`/api/v3/envelopes/${envelopeId}/documents`, {
-          body: JSON.stringify({
-            data: {
-              type: "documents",
-              attributes: {
-                content_base64: base64,
-                filename: `${sanitizeFilename(document.title)}.pdf`,
-              },
-            },
-          }),
+          body: JSON.stringify(buildDocumentPayload(document.title, base64)),
           method: "POST",
         }),
     );
@@ -98,21 +87,8 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
     const createdSigners = [];
 
     for (const signer of signers) {
-      const signerAttributes = {
-        birthday: normalizeBirthday(signer.birthday),
-        communicate_events: {
-          document_signed: "email",
-          signature_reminder: "email",
-          signature_request: "email",
-        },
-        documentation: normalizeDocumentNumber(signer.documentation),
-        email: signer.email,
-        group: 1,
-        has_documentation: signer.has_documentation ?? Boolean(signer.documentation),
-        location_required_enabled: false,
-        name: signer.name,
-        refusable: false,
-      };
+      const signerPayload = buildSignerPayload(signer);
+      const signerAttributes = signerPayload.data.attributes;
 
       logSync("info", "document.clicksign.signer-payload", {
         documentId: document.id,
@@ -125,12 +101,7 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
         `/api/v3/envelopes/${envelopeId}/signers`,
         () =>
           clicksignRequest<{ data: { id: string } }>(`/api/v3/envelopes/${envelopeId}/signers`, {
-            body: JSON.stringify({
-              data: {
-                type: "signers",
-                attributes: signerAttributes,
-              },
-            }),
+            body: JSON.stringify(signerPayload),
             method: "POST",
           }),
       );
@@ -144,23 +115,13 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
         `/api/v3/envelopes/${envelopeId}/requirements`,
         () =>
           clicksignRequest(`/api/v3/envelopes/${envelopeId}/requirements`, {
-            body: JSON.stringify({
-              data: {
-                type: "requirements",
-                attributes: {
-                  action: "agree",
-                  role: signer.qualificationRole,
-                },
-                relationships: {
-                  document: {
-                    data: { id: clicksignDocumentId, type: "documents" },
-                  },
-                  signer: {
-                    data: { id: signerId, type: "signers" },
-                  },
-                },
-              },
-            }),
+            body: JSON.stringify(
+              buildQualificationRequirementPayload(
+                clicksignDocumentId,
+                signerId,
+                signer.qualificationRole,
+              ),
+            ),
             method: "POST",
           }),
       );
@@ -171,23 +132,7 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
         `/api/v3/envelopes/${envelopeId}/requirements`,
         () =>
           clicksignRequest(`/api/v3/envelopes/${envelopeId}/requirements`, {
-            body: JSON.stringify({
-              data: {
-                type: "requirements",
-                attributes: {
-                  action: "provide_evidence",
-                  auth: "email",
-                },
-                relationships: {
-                  document: {
-                    data: { id: clicksignDocumentId, type: "documents" },
-                  },
-                  signer: {
-                    data: { id: signerId, type: "signers" },
-                  },
-                },
-              },
-            }),
+            body: JSON.stringify(buildAuthRequirementPayload(clicksignDocumentId, signerId)),
             method: "POST",
           }),
       );
@@ -199,15 +144,7 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
       `/api/v3/envelopes/${envelopeId}`,
       () =>
         clicksignRequest(`/api/v3/envelopes/${envelopeId}`, {
-          body: JSON.stringify({
-            data: {
-              type: "envelopes",
-              id: envelopeId,
-              attributes: {
-                status: "running",
-              },
-            },
-          }),
+          body: JSON.stringify(buildEnvelopeStatusPayload(envelopeId)),
           method: "PATCH",
         }),
     );
@@ -218,12 +155,7 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
       `/api/v3/envelopes/${envelopeId}/notifications`,
       () =>
         clicksignRequest(`/api/v3/envelopes/${envelopeId}/notifications`, {
-          body: JSON.stringify({
-            data: {
-              attributes: {},
-              type: "notifications",
-            },
-          }),
+          body: JSON.stringify(buildNotificationPayload()),
           method: "POST",
         }),
     );
@@ -310,49 +242,6 @@ function resolveSigners(entityType: string, entityId: string): ClicksignSignerIn
     },
     contratada,
   ];
-}
-
-function sanitizeFilename(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[^\w\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "_")
-    .toLowerCase();
-}
-
-function normalizeBirthday(value: string | null | undefined) {
-  const raw = value?.trim();
-
-  if (!raw) {
-    return null;
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    return raw;
-  }
-
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
-    const [day, month, year] = raw.split("/");
-    return `${year}-${month}-${day}`;
-  }
-
-  return raw;
-}
-
-function buildEnvelopeDeadlineAt() {
-  const deadline = new Date();
-  deadline.setDate(deadline.getDate() + 7);
-  return deadline.toISOString();
-}
-
-function buildDefaultEnvelopeSubject(title: string) {
-  const subject = `Assinatura pendente: ${title}`.trim();
-  return subject.slice(0, 100);
-}
-
-function buildDefaultEnvelopeMessage(title: string) {
-  return `Olá, este documento foi disponibilizado para assinatura: ${title}. Por favor, revise e conclua a assinatura.`;
 }
 
 async function runClicksignStep<T>(

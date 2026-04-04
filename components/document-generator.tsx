@@ -12,214 +12,29 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { fetchJson, getErrorMessage } from "@/lib/api/json";
 import { normalizeDocumentNumber } from "@/lib/documents/formatters";
+import {
+  applyOrcamentoAutofill,
+  applyPessoaAutofill,
+  canGeneratePreview,
+  createDocumentPayload,
+  createEmptyManualFormState,
+  createEmptyOrcamentoFormState,
+  createInitialFormState,
+  EMPTY_AUTOFILL_FIELDS,
+  toShortPersonName,
+  type DocumentGeneratorFormState as FormState,
+  type DocumentGeneratorMode,
+  type OrcamentoAutofillSource,
+  upsertPassenger,
+} from "@/lib/documents/generator-form";
 import type {
   RecentFornecedorDocumentOption,
   PessoaDocumentSource,
   RecentOrcamentoDocumentOption,
   RecentPessoaDocumentOption,
 } from "@/lib/documents/types";
-
-type FormState = {
-  bairro: string;
-  cep: string;
-  cidade: string;
-  condicoesTarifarias: string;
-  estado: string;
-  fornecedor: string;
-  localizadorReserva: string;
-  logradouro: string;
-  mode: "manual" | "orcamento";
-  numero: string;
-  orcamentoId: string;
-  pessoaContratanteId: string;
-  servicoContratado: string;
-};
-
-const EMPTY_AUTOFILL_FIELDS = {
-  bairro: "",
-  cep: "",
-  cidade: "",
-  estado: "",
-  localizadorReserva: "",
-  logradouro: "",
-  numero: "",
-} as const;
-
-function createInitialFormState(
-  forcedMode: "manual" | "orcamento" | undefined,
-  initialOrcamentoId: string,
-): FormState {
-  return {
-    bairro: "",
-    cep: "",
-    cidade: "",
-    condicoesTarifarias: "",
-    estado: "",
-    fornecedor: "",
-    localizadorReserva: "",
-    logradouro: "",
-    mode: forcedMode ?? (initialOrcamentoId ? "orcamento" : "manual"),
-    numero: "",
-    orcamentoId: initialOrcamentoId,
-    pessoaContratanteId: "",
-    servicoContratado: "Intermediação na compra de passagens aéreas",
-  };
-}
-
-function createEmptyManualFormState(): FormState {
-  return createInitialFormState("manual", "");
-}
-
-function createEmptyOrcamentoFormState(): FormState {
-  return createInitialFormState("orcamento", "");
-}
-
-function createDocumentPayload(form: FormState, passageiros: PessoaDocumentSource[]) {
-  return {
-    ...form,
-    passageirosPessoaIds: passageiros.map((item) => item.id),
-  };
-}
-
-function hasCompleteAddress(form: FormState) {
-  return [
-    form.logradouro,
-    form.numero,
-    form.bairro,
-    form.cep,
-    form.cidade,
-    form.estado,
-  ].every((value) => value.trim());
-}
-
-function canGeneratePreview(form: FormState) {
-  if (!hasCompleteAddress(form)) {
-    return false;
-  }
-
-  if (form.mode === "orcamento") {
-    return Boolean(form.orcamentoId.trim());
-  }
-
-  return Boolean(form.pessoaContratanteId.trim());
-}
-
-function extractString(value: unknown) {
-  return typeof value === "string" ? value : "";
-}
-
-function extractOrcamentoLocalizador(raw: Record<string, unknown> | null | undefined) {
-  const voos = raw?.voos;
-
-  if (!Array.isArray(voos) || voos.length === 0) {
-    return "";
-  }
-
-  const firstFlight = voos[0];
-
-  if (!firstFlight || typeof firstFlight !== "object" || Array.isArray(firstFlight)) {
-    return "";
-  }
-
-  return extractString((firstFlight as Record<string, unknown>).localizador);
-}
-
-function applyOrcamentoAutofill(current: FormState, source: {
-  clienteBairro?: string | null;
-  clienteCep?: string | null;
-  clienteCidade?: string | null;
-  clienteCpf?: string | null;
-  clienteEndereco?: string | null;
-  clienteEstado?: string | null;
-  clienteNome?: string | null;
-  clienteNumero?: string | null;
-  raw?: Record<string, unknown> | null;
-}) {
-  return {
-    ...current,
-    ...EMPTY_AUTOFILL_FIELDS,
-    bairro: source.clienteBairro || "",
-    cep: source.clienteCep || "",
-    cidade: source.clienteCidade || "",
-    estado: source.clienteEstado || "",
-    localizadorReserva: extractOrcamentoLocalizador(source.raw),
-    logradouro: source.clienteEndereco || "",
-    numero: source.clienteNumero || "",
-  };
-}
-
-function applyPessoaAutofill(current: FormState, source: PessoaDocumentSource) {
-  return {
-    ...current,
-    ...EMPTY_AUTOFILL_FIELDS,
-    bairro: source.bairro || "",
-    cep: source.cep || "",
-    cidade: source.cidade || "",
-    estado: source.estado || "",
-    logradouro: source.endereco || "",
-    numero: source.numero || "",
-  };
-}
-
-async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit) {
-  const response = await fetch(input, init);
-
-  if (!response.ok) {
-    const text = await response.text();
-    const payload = safeJsonParse(text) as
-      | { details?: string[]; error?: string }
-      | null;
-    throw new Error(resolveApiErrorMessage(payload, "Não foi possível completar a operação."));
-  }
-
-  return response.json() as Promise<T>;
-}
-
-function safeJsonParse(text: string) {
-  if (!text) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return { error: text };
-  }
-}
-
-function resolveApiErrorMessage(
-  payload: { details?: string[]; error?: string } | null,
-  fallback: string,
-) {
-  const detail = payload?.details?.find((value) => typeof value === "string" && value.trim());
-  return detail ?? payload?.error ?? fallback;
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
-}
-
-function upsertPassenger(current: PessoaDocumentSource[], source: PessoaDocumentSource) {
-  return current.some((person) => person.id === source.id) ? current : [...current, source];
-}
-
-function toShortPersonName(value: string | null | undefined) {
-  const normalized = (value ?? "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (normalized.length === 0) {
-    return "";
-  }
-
-  if (normalized.length === 1) {
-    return normalized[0];
-  }
-
-  return `${normalized[0]} ${normalized[normalized.length - 1]}`;
-}
 
 function ControlButton({
   children,
@@ -629,7 +444,7 @@ export function DocumentGenerator({
   initialOrcamentoId = "",
   recentPessoas,
 }: {
-  forcedMode?: "manual" | "orcamento";
+  forcedMode?: DocumentGeneratorMode;
   initialOrcamentoId?: string;
   recentPessoas: RecentPessoaDocumentOption[];
 }) {
@@ -731,17 +546,7 @@ export function DocumentGenerator({
     }
 
     let active = true;
-    fetchJson<{
-      clienteBairro?: string | null;
-      clienteCep?: string | null;
-      clienteCidade?: string | null;
-      clienteCpf?: string | null;
-      clienteEndereco?: string | null;
-      clienteEstado?: string | null;
-      clienteNome?: string | null;
-      clienteNumero?: string | null;
-      raw?: Record<string, unknown> | null;
-    }>(`/api/documentos/orcamentos/${form.orcamentoId}`)
+    fetchJson<OrcamentoAutofillSource>(`/api/documentos/orcamentos/${form.orcamentoId}`)
       .then((source) => {
         if (active) {
           setForm((current) => applyOrcamentoAutofill(current, source));

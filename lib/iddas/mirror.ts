@@ -13,16 +13,29 @@ import {
   refreshVoosProjectionByOrcamentoIds,
 } from "@/lib/db";
 import { env } from "@/lib/env";
-import { pickReferenceId, readId, readString } from "@/lib/iddas/accessors";
+import { readId } from "@/lib/iddas/accessors";
 import {
   fetchIddasDetail,
   fetchIddasList,
-  type IddasObject,
 } from "@/lib/iddas/client";
 import {
   getIddasCotacaoRange,
   normalizeCotacaoRange,
 } from "@/lib/iddas/date-range";
+import {
+  extractReferencedPeople,
+  getSyncErrorMessage,
+  isApprovedOrcamento,
+  isSyncCancelledError,
+  parseTaskPayload,
+  readPendingIds,
+  shouldRefreshDetail,
+  shouldRefreshPessoa as shouldRefreshPessoaSnapshot,
+  type MirrorStateRow,
+  type PessoaReference,
+  type SyncTaskRow,
+  type SyncTaskType,
+} from "@/lib/iddas/mirror-helpers";
 import {
   normalizeOrcamento,
   normalizeOrcamentoSummary,
@@ -1009,32 +1022,6 @@ type SyncResult = {
   vendas_synced: number;
 };
 
-type MirrorStateRow = {
-  detail_synced_at: string | null;
-  id: string;
-  source_hash: string | null;
-  source_updated_at: string | null;
-};
-
-type PessoaReference = {
-  cpf: string | null;
-  email: string | null;
-  id: string;
-  nome: string | null;
-};
-
-type SyncTaskType = "pessoa" | "venda_orcamento";
-
-type SyncTaskRow = {
-  attempts: number;
-  entity_id: string;
-  id: number;
-  parent_id: string | null;
-  payload_json: string;
-  task_key: string;
-  task_type: SyncTaskType;
-};
-
 let activeOrcamentosSync: Promise<SyncResult> | null = null;
 let activeSolicitacoesSync: Promise<SyncResult> | null = null;
 let activePessoasSync: Promise<SyncResult> | null = null;
@@ -1655,8 +1642,8 @@ async function runSolicitacoesSync(): Promise<SyncResult> {
       vendas_synced: 0,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Falha inesperada no sync.";
-    const cancelled = error instanceof Error && error.message === "SYNC_CANCELLED";
+    const message = getSyncErrorMessage(error);
+    const cancelled = isSyncCancelledError(error);
 
     updateSyncStateRecord(scope, {
       cancel_requested: 0,
@@ -1811,7 +1798,7 @@ async function runPessoasSync(): Promise<SyncResult> {
           related_synced: itemsSynced,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Falha ao buscar pessoa.";
+        const message = getSyncErrorMessage(error);
 
         if (message.includes("IDDAS respondeu 404")) {
           fetchedPersonIds.add(personId);
@@ -1890,7 +1877,7 @@ async function runPessoasSync(): Promise<SyncResult> {
           people_synced: itemsSynced,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Falha ao buscar pessoa.";
+        const message = getSyncErrorMessage(error);
 
         if (message.includes("IDDAS respondeu 404")) {
           fetchedPersonIds.add(personId);
@@ -1948,8 +1935,8 @@ async function runPessoasSync(): Promise<SyncResult> {
       vendas_synced: 0,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Falha inesperada no sync.";
-    const cancelled = error instanceof Error && error.message === "SYNC_CANCELLED";
+    const message = getSyncErrorMessage(error);
+    const cancelled = isSyncCancelledError(error);
 
     updateSyncStateRecord(scope, {
       cancel_requested: 0,
@@ -2115,8 +2102,8 @@ async function runVendasSync(): Promise<SyncResult> {
       vendas_synced: itemsSynced,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Falha inesperada no sync.";
-    const cancelled = error instanceof Error && error.message === "SYNC_CANCELLED";
+    const message = getSyncErrorMessage(error);
+    const cancelled = isSyncCancelledError(error);
 
     updateSyncStateRecord(scope, {
       cancel_requested: 0,
@@ -2295,9 +2282,8 @@ function finishScopeWithError(
     vendasSynced: number;
   },
 ) {
-  const message =
-    input.error instanceof Error ? input.error.message : "Falha inesperada no sync.";
-  const cancelled = input.error instanceof Error && input.error.message === "SYNC_CANCELLED";
+  const message = getSyncErrorMessage(input.error);
+  const cancelled = isSyncCancelledError(input.error);
 
   updateSyncStateRecord(scope, {
     cancel_requested: 0,
@@ -2354,30 +2340,6 @@ function getMirrorState(statement: { get(id: string): unknown }, id: string) {
   return (statement.get(id) as MirrorStateRow | undefined) ?? null;
 }
 
-function shouldRefreshDetail(
-  existing: MirrorStateRow | null,
-  nextHash: string,
-  nextSourceUpdatedAt: string | null,
-) {
-  if (!existing) {
-    return true;
-  }
-
-  if (!existing.detail_synced_at) {
-    return true;
-  }
-
-  if (existing.source_hash !== nextHash) {
-    return true;
-  }
-
-  return (existing.source_updated_at ?? null) !== (nextSourceUpdatedAt ?? null);
-}
-
-function readPendingIds(statement: { all(): unknown[] }) {
-  return (statement.all() as Array<{ id: string }>).map((row) => row.id);
-}
-
 function enqueueDerivedTask(
   scope: SyncScope,
   taskType: SyncTaskType,
@@ -2404,88 +2366,6 @@ function readPendingTasks(scope: SyncScope, taskType: SyncTaskType) {
   return listPendingSyncTasksByType.all(scope, taskType) as SyncTaskRow[];
 }
 
-function parseTaskPayload(payloadJson: string) {
-  try {
-    const parsed = JSON.parse(payloadJson) as Record<string, string>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function extractReferencedPeople(
-  detail: Record<string, unknown>,
-  orcamento: { cliente_pessoa_id: string | null },
-) {
-  const references = new Map<string, PessoaReference>();
-
-  if (orcamento.cliente_pessoa_id) {
-    references.set(orcamento.cliente_pessoa_id, {
-      cpf:
-        readString(detail.cpf_cliente) ??
-        readString(detail.cpf),
-      email: readString(detail.email_cliente),
-      id: orcamento.cliente_pessoa_id,
-      nome: readString(detail.nome_cliente),
-    });
-  }
-
-  for (const group of [detail.passageiros, detail.passageiro, detail.viajantes]) {
-    if (!Array.isArray(group)) {
-      continue;
-    }
-
-    for (const entry of group) {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-        continue;
-      }
-
-      const item = entry as IddasObject;
-      const personId = pickReferenceId(item, [
-        "id_pessoa",
-        "pessoa.id",
-        "pessoa_id",
-        "cliente.id",
-        "cliente_id",
-      ]);
-
-      if (!personId) {
-        continue;
-      }
-
-      references.set(personId, mergePessoaReference(references.get(personId), {
-        cpf:
-          readString(item.cpf) ??
-          readString(item.cpf_cnpj) ??
-          readString(item.documento),
-        email: readString(item.email),
-        id: personId,
-        nome:
-          readString(item.nome) ??
-          readString(item.nome_completo),
-      }));
-    }
-  }
-
-  return [...references.values()];
-}
-
-function mergePessoaReference(
-  current: PessoaReference | undefined,
-  next: PessoaReference,
-): PessoaReference {
-  if (!current) {
-    return next;
-  }
-
-  return {
-    cpf: current.cpf ?? next.cpf,
-    email: current.email ?? next.email,
-    id: current.id,
-    nome: current.nome ?? next.nome,
-  };
-}
-
 function shouldRefreshPessoa(reference: PessoaReference) {
   const existing = getPessoaSnapshot.get(reference.id) as
     | {
@@ -2502,49 +2382,7 @@ function shouldRefreshPessoa(reference: PessoaReference) {
       }
     | undefined;
 
-  if (!existing) {
-    return true;
-  }
-
-  return (
-    isDifferentComparableText(existing.nome, reference.nome) ||
-    isDifferentComparableText(existing.email, reference.email) ||
-    isDifferentComparableDocument(existing.cpf, reference.cpf)
-  );
-}
-
-function isApprovedOrcamento(orcamento: {
-  situacao_codigo: string | null;
-  situacao_nome: string | null;
-}) {
-  return (
-    normalizeComparableText(orcamento.situacao_codigo) === "a" ||
-    normalizeComparableText(orcamento.situacao_nome) === "aprovado"
-  );
-}
-
-function isDifferentComparableText(current: string | null, next: string | null) {
-  if (!next || !next.trim()) {
-    return false;
-  }
-
-  return normalizeComparableText(current) !== normalizeComparableText(next);
-}
-
-function isDifferentComparableDocument(current: string | null, next: string | null) {
-  if (!next || !next.trim()) {
-    return false;
-  }
-
-  return normalizeDocument(current) !== normalizeDocument(next);
-}
-
-function normalizeComparableText(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function normalizeDocument(value: string | null | undefined) {
-  return (value ?? "").replace(/\D+/g, "");
+  return shouldRefreshPessoaSnapshot(existing, reference);
 }
 
 function runLocalReconciliation() {
