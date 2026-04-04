@@ -40,6 +40,28 @@ export type DocumentRecord = {
   updated_at: string;
 };
 
+export type DocumentHistoryRecord = DocumentRecord & {
+  signatureLastError: string | null;
+  signatureRawResponseJson: string | null;
+  signatureSignersJson: string | null;
+  signatureSentAt: string | null;
+  signatureSignedAt: string | null;
+  signatureStatus: string | null;
+};
+
+export type DocumentSignatureSignerStatus = {
+  email: string;
+  name: string;
+  signed: boolean;
+};
+
+export type DocumentSignatureTimelineItem = {
+  actorName: string | null;
+  actorRole: string | null;
+  eventName: string;
+  occurredAt: string | null;
+};
+
 export type OrcamentoDocumentSource = {
   clienteBairro: string | null;
   clienteCpf: string | null;

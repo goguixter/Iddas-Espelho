@@ -1,0 +1,551 @@
+import type {
+  DocumentSignatureSignerStatus,
+  DocumentSignatureTimelineItem,
+} from "@/lib/documents/types";
+
+type ClicksignRawState = {
+  documentId?: string | null;
+  documentSnapshot?: Record<string, unknown> | null;
+  envelopeId?: string | null;
+  lastWebhook?: Record<string, unknown> | null;
+  send?: Record<string, unknown> | null;
+  sync?: {
+    envelope?: Record<string, unknown> | null;
+    events?: Record<string, unknown>[];
+  } | null;
+  webhookEvents?: Record<string, unknown>[];
+};
+
+type NormalizedEvent = {
+  actorEmail: string | null;
+  actorName: string | null;
+  actorRole: string | null;
+  eventName: string;
+  occurredAt: string | null;
+  signerUrl: string | null;
+};
+
+export function deriveClicksignSignatureState({
+  currentStatus,
+  documentCreatedAt,
+  rawResponseJson,
+  signersJson,
+}: {
+  currentStatus?: string | null;
+  documentCreatedAt?: string | null;
+  rawResponseJson?: string | null;
+  signersJson?: string | null;
+}) {
+  const state = parseClicksignRawState(rawResponseJson);
+  const normalizedEvents = collectNormalizedEvents(state);
+  const documentStatus = extractDocumentStatus(state) ?? normalizeString(currentStatus);
+  const persistedSigners = parseStoredSigners(signersJson);
+  const snapshotSigners = extractDocumentSigners(state);
+  const signers = mergeSignerStatuses(persistedSigners, snapshotSigners);
+  const signatureLinks = collectSignatureLinks(state, normalizedEvents);
+  const signedEmails = new Set(
+    normalizedEvents
+      .filter((item) => item.eventName === "sign" && item.actorEmail)
+      .map((item) => item.actorEmail as string),
+  );
+
+  const signerStatuses = mergeSignerStatuses(
+    signers.map((item) => ({
+      ...item,
+      signed: signedEmails.has(item.email.toLowerCase()),
+    })),
+    normalizedEvents
+      .filter((item) => item.eventName === "sign" && item.actorEmail && item.actorName)
+      .map((item) => ({
+        email: item.actorEmail!.toLowerCase(),
+        name: item.actorName!,
+        signed: true,
+      })),
+  );
+
+  const sentAt = normalizedEvents
+    .filter((item) => item.eventName === "upload" || item.eventName === "add_signer" || item.eventName === "custom")
+    .map((item) => item.occurredAt)
+    .filter((value): value is string => Boolean(value))
+    .sort()[0] ?? null;
+
+  const signedAt = normalizedEvents
+    .filter((item) => item.eventName === "sign")
+    .map((item) => item.occurredAt)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
+
+  const timeline = buildTimeline(documentCreatedAt, normalizedEvents);
+  const effectiveStatus = resolveSignatureStatus({
+    currentStatus,
+    documentStatus,
+    eventNames: new Set(normalizedEvents.map((item) => item.eventName)),
+    signedAll:
+      signerStatuses.length > 0 &&
+      signerStatuses.every((item) => item.signed),
+    signedCount: signerStatuses.filter((item) => item.signed).length,
+  });
+
+  return {
+    documentStatus,
+    sentAt,
+    signatureLinks,
+    signedAt,
+    signers: signerStatuses,
+    status: effectiveStatus,
+    timeline,
+  };
+}
+
+export function mergeClicksignRawState(
+  currentRawResponseJson: string | null | undefined,
+  patch: {
+    documentId?: string | null;
+    documentSnapshot?: Record<string, unknown> | null;
+    envelopeId?: string | null;
+    lastWebhook?: Record<string, unknown> | null;
+    send?: Record<string, unknown> | null;
+    syncEnvelope?: Record<string, unknown> | null;
+    syncEvents?: Record<string, unknown>[];
+    webhookEvent?: Record<string, unknown> | null;
+  },
+) {
+  const current = parseClicksignRawState(currentRawResponseJson);
+  const nextWebhookEvents = dedupeObjects([
+    ...(current.webhookEvents ?? []),
+    ...(patch.webhookEvent ? [patch.webhookEvent] : []),
+  ]);
+
+  const next: ClicksignRawState = {
+    documentId: patch.documentId ?? current.documentId ?? null,
+    documentSnapshot: patch.documentSnapshot ?? current.documentSnapshot ?? null,
+    envelopeId: patch.envelopeId ?? current.envelopeId ?? null,
+    lastWebhook: patch.lastWebhook ?? current.lastWebhook ?? null,
+    send: patch.send ?? current.send ?? null,
+    sync:
+      patch.syncEnvelope || patch.syncEvents
+        ? {
+            envelope: patch.syncEnvelope ?? current.sync?.envelope ?? null,
+            events: patch.syncEvents ?? current.sync?.events ?? [],
+          }
+        : current.sync ?? null,
+    webhookEvents: nextWebhookEvents,
+  };
+
+  return JSON.stringify(next);
+}
+
+function buildTimeline(
+  documentCreatedAt: string | null | undefined,
+  normalizedEvents: NormalizedEvent[],
+) {
+  const timeline: DocumentSignatureTimelineItem[] = [];
+
+  if (normalizeString(documentCreatedAt)) {
+    timeline.push({
+      actorName: null,
+      actorRole: "system",
+      eventName: "document_created",
+      occurredAt: normalizeString(documentCreatedAt),
+    });
+  }
+
+  for (const event of normalizedEvents) {
+    timeline.push({
+      actorName: event.actorName,
+      actorRole: event.actorRole ?? event.actorEmail,
+      eventName: event.eventName,
+      occurredAt: event.occurredAt,
+    });
+  }
+
+  return dedupeTimeline(timeline).sort(compareTimelineDesc);
+}
+
+function collectSignatureLinks(
+  state: ClicksignRawState,
+  normalizedEvents: NormalizedEvent[],
+) {
+  const links: Record<string, string> = {};
+
+  for (const signer of extractDocumentSigners(state)) {
+    const key = signer.email.toLowerCase();
+    if (signer.url) {
+      links[key] = signer.url;
+    }
+  }
+
+  for (const event of normalizedEvents) {
+    if (event.actorEmail && event.signerUrl) {
+      links[event.actorEmail.toLowerCase()] = event.signerUrl;
+    }
+  }
+
+  return links;
+}
+
+function collectNormalizedEvents(state: ClicksignRawState) {
+  return dedupeNormalizedEvents([
+    ...normalizePayloadEvents(state.lastWebhook),
+    ...normalizePayloadArray(state.webhookEvents),
+    ...normalizePayloadEvents(state.documentSnapshot),
+    ...normalizeSyncEvents(state.sync?.events),
+  ]);
+}
+
+function normalizePayloadArray(input: unknown) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input.flatMap((item) => normalizePayloadEvents(item));
+}
+
+function normalizePayloadEvents(payload: unknown) {
+  const object = toObject(payload);
+  if (!object) {
+    return [];
+  }
+
+  const directEvent = normalizeEvent(object.event);
+  const documentEvents = normalizeEventsArray(readObject(object, "document")?.events);
+  return dedupeNormalizedEvents(directEvent ? [directEvent, ...documentEvents] : documentEvents);
+}
+
+function normalizeSyncEvents(input: unknown) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((item) => {
+      const attributes = readObject(item, "attributes");
+      const data = readObject(attributes, "data");
+      return normalizeEvent({
+        data,
+        name: attributes?.name,
+        occurred_at: attributes?.created,
+      });
+    })
+    .filter((value): value is NormalizedEvent => Boolean(value));
+}
+
+function normalizeEventsArray(input: unknown) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((item) => normalizeEvent(item))
+    .filter((value): value is NormalizedEvent => Boolean(value));
+}
+
+function normalizeEvent(input: unknown) {
+  const event = toObject(input);
+  if (!event) {
+    return null;
+  }
+
+  const eventName = normalizeString(event.name);
+  if (!eventName) {
+    return null;
+  }
+
+  const data = readObject(event, "data");
+  const signer = readObject(data, "signer");
+  const user = readObject(data, "user");
+
+  return {
+    actorEmail: normalizeString(signer?.email)?.toLowerCase() ?? null,
+    actorName: normalizeString(signer?.name) ?? normalizeString(user?.name),
+    actorRole: normalizeString(signer?.sign_as),
+    eventName,
+    occurredAt: normalizeString(event.occurred_at),
+    signerUrl: normalizeString(signer?.url),
+  } satisfies NormalizedEvent;
+}
+
+function extractDocumentStatus(state: ClicksignRawState) {
+  const lastWebhookDocument = readObject(state.lastWebhook, "document");
+  const syncEnvelopeData = readObject(state.sync?.envelope, "data");
+  const syncEnvelopeAttributes = readObject(syncEnvelopeData, "attributes");
+
+  return (
+    normalizeString(state.documentSnapshot?.status) ??
+    normalizeString(lastWebhookDocument?.status) ??
+    normalizeString(syncEnvelopeAttributes?.status)
+  );
+}
+
+function extractDocumentSigners(state: ClicksignRawState) {
+  const lastWebhookDocument = readObject(state.lastWebhook, "document");
+  const candidates = [
+    ...normalizeDocumentSigners(state.documentSnapshot?.signers),
+    ...normalizeDocumentSigners(lastWebhookDocument?.signers),
+  ];
+
+  return mergeDocumentSigners(candidates);
+}
+
+function normalizeDocumentSigners(input: unknown) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const normalized = input
+    .map((item) => {
+      const signer = toObject(item);
+      const email = normalizeString(signer?.email);
+      const name = normalizeString(signer?.name);
+
+      if (!email || !name) {
+        return null;
+      }
+
+      return {
+        email: email.toLowerCase(),
+        name,
+        signed: false,
+        url: normalizeString(signer?.url),
+      };
+    });
+
+  return normalized.filter(
+    (
+      value,
+    ): value is DocumentSignatureSignerStatus & {
+      url: string | null;
+    } => value !== null,
+  );
+}
+
+function parseStoredSigners(signersJson: string | null | undefined): DocumentSignatureSignerStatus[] {
+  try {
+    const parsed = JSON.parse(signersJson ?? "[]") as Array<Record<string, unknown>>;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const normalized: Array<DocumentSignatureSignerStatus | null> = parsed
+      .map((item) => {
+        const email = normalizeString(item.email);
+        const name = normalizeString(item.name);
+        if (!email || !name) {
+          return null;
+        }
+
+        return {
+          email: email.toLowerCase(),
+          name,
+          signed: false,
+        };
+      });
+
+    return normalized.filter((value): value is DocumentSignatureSignerStatus => value !== null);
+  } catch {
+    return [];
+  }
+}
+
+function mergeSignerStatuses(
+  primary: DocumentSignatureSignerStatus[],
+  secondary: DocumentSignatureSignerStatus[],
+) {
+  const map = new Map<string, DocumentSignatureSignerStatus>();
+
+  for (const signer of [...primary, ...secondary]) {
+    const key = signer.email.toLowerCase();
+    const current = map.get(key);
+    map.set(key, {
+      email: signer.email,
+      name: signer.name,
+      signed: signer.signed || current?.signed || false,
+    });
+  }
+
+  return Array.from(map.values());
+}
+
+function mergeDocumentSigners(
+  signers: Array<
+    DocumentSignatureSignerStatus & {
+      url: string | null;
+    }
+  >,
+) {
+  const map = new Map<
+    string,
+    DocumentSignatureSignerStatus & {
+      url: string | null;
+    }
+  >();
+
+  for (const signer of signers) {
+    const key = signer.email.toLowerCase();
+    const current = map.get(key);
+    map.set(key, {
+      email: signer.email,
+      name: signer.name,
+      signed: signer.signed || current?.signed || false,
+      url: signer.url ?? current?.url ?? null,
+    });
+  }
+
+  return Array.from(map.values());
+}
+
+function resolveSignatureStatus({
+  currentStatus,
+  documentStatus,
+  eventNames,
+  signedAll,
+  signedCount,
+}: {
+  currentStatus?: string | null;
+  documentStatus?: string | null;
+  eventNames: Set<string>;
+  signedAll: boolean;
+  signedCount: number;
+}) {
+  const normalizedDocumentStatus = (documentStatus ?? "").toLowerCase();
+  const normalizedCurrentStatus = (currentStatus ?? "").toLowerCase();
+
+  if (!normalizedDocumentStatus && !eventNames.size) {
+    return normalizedCurrentStatus || "created";
+  }
+
+  if (normalizedDocumentStatus === "cancelled" || normalizedDocumentStatus === "canceled") {
+    return "canceled";
+  }
+
+  if (normalizedDocumentStatus === "closed") {
+    return "signed";
+  }
+
+  if (eventNames.has("refusal")) {
+    return "refused";
+  }
+
+  if (eventNames.has("cancel")) {
+    return "canceled";
+  }
+
+  if (eventNames.has("auto_close") || eventNames.has("document_closed")) {
+    return "signed";
+  }
+
+  if (eventNames.has("deadline")) {
+    return signedCount > 0 ? "signed" : "canceled";
+  }
+
+  if (signedAll) {
+    return "signed";
+  }
+
+  if (normalizedDocumentStatus === "running") {
+    return signedCount > 0 || eventNames.has("signature_started") || eventNames.has("sign")
+      ? "running"
+      : "sent";
+  }
+
+  if (normalizedDocumentStatus === "draft") {
+    return eventNames.has("upload") || eventNames.has("add_signer") ? "processing" : "created";
+  }
+
+  if (eventNames.has("signature_started") || eventNames.has("sign")) {
+    return "running";
+  }
+
+  if (
+    eventNames.has("upload") ||
+    eventNames.has("add_signer") ||
+    eventNames.has("custom") ||
+    eventNames.has("update_deadline") ||
+    eventNames.has("update_auto_close") ||
+    eventNames.has("update_locale")
+  ) {
+    return "sent";
+  }
+
+  return normalizedCurrentStatus || "created";
+}
+
+function parseClicksignRawState(rawResponseJson: string | null | undefined) {
+  try {
+    const parsed = JSON.parse(rawResponseJson ?? "{}") as unknown;
+    return (toObject(parsed) ?? {}) as ClicksignRawState;
+  } catch {
+    return {};
+  }
+}
+
+function dedupeTimeline(items: DocumentSignatureTimelineItem[]) {
+  const seen = new Set<string>();
+  const result: DocumentSignatureTimelineItem[] = [];
+
+  for (const item of items) {
+    const key = `${item.eventName}|${item.occurredAt ?? ""}|${item.actorName ?? ""}|${item.actorRole ?? ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
+function dedupeNormalizedEvents(items: NormalizedEvent[]) {
+  const seen = new Set<string>();
+  const result: NormalizedEvent[] = [];
+
+  for (const item of items) {
+    const key = `${item.eventName}|${item.occurredAt ?? ""}|${item.actorName ?? ""}|${item.actorEmail ?? ""}|${item.actorRole ?? ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
+function dedupeObjects(items: Record<string, unknown>[]) {
+  const seen = new Set<string>();
+  const result: Record<string, unknown>[] = [];
+
+  for (const item of items) {
+    const key = JSON.stringify(item);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
+function compareTimelineDesc(left: DocumentSignatureTimelineItem, right: DocumentSignatureTimelineItem) {
+  return (right.occurredAt ?? "").localeCompare(left.occurredAt ?? "");
+}
+
+function toObject(input: unknown) {
+  return input && typeof input === "object" && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : null;
+}
+
+function readObject(input: unknown, key: string) {
+  const object = toObject(input);
+  return toObject(object?.[key]);
+}
+
+function normalizeString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}

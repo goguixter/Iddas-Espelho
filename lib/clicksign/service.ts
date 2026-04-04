@@ -9,6 +9,7 @@ import {
   buildSignerPayload,
   normalizeBirthday,
 } from "@/lib/clicksign/payloads";
+import { mergeClicksignRawState } from "@/lib/clicksign/state";
 import type { ClicksignSignerInput } from "@/lib/clicksign/types";
 import { env } from "@/lib/env";
 import { normalizeDocumentNumber } from "@/lib/documents/formatters";
@@ -164,10 +165,14 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
       last_error: null,
       provider_document_id: clicksignDocumentId,
       provider_envelope_id: envelopeId,
-      raw_response_json: JSON.stringify({
+      raw_response_json: mergeClicksignRawState("{}", {
         documentId: clicksignDocumentId,
         envelopeId,
-        signers: createdSigners,
+        send: {
+          documentId: clicksignDocumentId,
+          envelopeId,
+          signers: createdSigners,
+        },
       }),
       sent_at: new Date().toISOString(),
       signers_json: JSON.stringify(createdSigners),

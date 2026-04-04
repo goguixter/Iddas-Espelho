@@ -21,16 +21,13 @@ function resolveErrorMessage(
 export function DocumentSignatureActions({
   documentId,
   initialError,
-  initialStatus,
 }: {
   documentId: number;
   initialError?: string | null;
-  initialStatus?: string | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(initialError ?? "");
-  const [status, setStatus] = useState(initialStatus ?? "");
 
   async function handleSend() {
     setLoading(true);
@@ -51,7 +48,6 @@ export function DocumentSignatureActions({
         throw new Error(resolveErrorMessage(payload, "Não foi possível enviar para assinatura."));
       }
 
-      setStatus(payload.status ?? "sent");
       router.refresh();
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Falha ao enviar para assinatura.");
@@ -61,7 +57,7 @@ export function DocumentSignatureActions({
   }
 
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="flex flex-col items-start gap-3">
       <button
         type="button"
         onClick={handleSend}
@@ -71,12 +67,7 @@ export function DocumentSignatureActions({
         {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
         Enviar para assinatura
       </button>
-      {status ? (
-        <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-faint)]">
-          Status Clicksign: {status}
-        </p>
-      ) : null}
-      {error ? <p className="max-w-xs text-right text-xs text-rose-300">{error}</p> : null}
+      {error ? <p className="max-w-sm text-xs leading-5 text-rose-300">{error}</p> : null}
     </div>
   );
 }

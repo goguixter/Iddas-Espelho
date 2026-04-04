@@ -35,3 +35,13 @@ export type DocumentSignatureRequestRecord = {
   status: string;
   updated_at: string;
 };
+
+export type DocumentSignatureEventRecord = {
+  created_at: string;
+  id: string;
+  payload_json: string;
+  provider_created_at: string | null;
+  provider_event_type: string;
+  signature_request_id: number;
+  updated_at: string;
+};
