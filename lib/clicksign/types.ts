@@ -7,18 +7,6 @@ export type ClicksignSignerInput = {
   qualificationRole: "contractee" | "contractor";
 };
 
-export type ClicksignEnvelope = {
-  id: string;
-};
-
-export type ClicksignDocument = {
-  id: string;
-};
-
-export type ClicksignSigner = {
-  id: string;
-};
-
 export type DocumentSignatureRequestRecord = {
   created_at: string;
   document_record_id: number;
