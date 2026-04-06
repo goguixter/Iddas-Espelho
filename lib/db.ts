@@ -380,6 +380,20 @@ function runMigrations() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS clicksign_webhook_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      provider_document_id TEXT,
+      provider_envelope_id TEXT,
+      signature_header TEXT,
+      signature_valid INTEGER NOT NULL DEFAULT 0,
+      event_name TEXT,
+      payload_json TEXT NOT NULL,
+      processing_status TEXT NOT NULL DEFAULT 'received',
+      processing_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   ensureColumn("sync_state", "status", "TEXT NOT NULL DEFAULT 'idle'");
@@ -561,6 +575,10 @@ function runMigrations() {
   ensureIndex(
     "idx_document_signature_events_request",
     "CREATE INDEX IF NOT EXISTS idx_document_signature_events_request ON document_signature_events (signature_request_id, provider_created_at DESC)",
+  );
+  ensureIndex(
+    "idx_clicksign_webhook_deliveries_document",
+    "CREATE INDEX IF NOT EXISTS idx_clicksign_webhook_deliveries_document ON clicksign_webhook_deliveries (provider_document_id, provider_envelope_id, created_at DESC)",
   );
   ensureIndex(
     "idx_document_templates_active",

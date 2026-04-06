@@ -25,6 +25,21 @@ type NormalizedEvent = {
   signerUrl: string | null;
 };
 
+const VISIBLE_TIMELINE_EVENTS = new Set([
+  "add_signer",
+  "auto_close",
+  "cancel",
+  "close",
+  "custom",
+  "deadline",
+  "document_closed",
+  "document_created",
+  "refusal",
+  "sign",
+  "signature_started",
+  "upload",
+]);
+
 export function deriveClicksignSignatureState({
   currentStatus,
   documentCreatedAt,
@@ -147,11 +162,15 @@ function buildTimeline(
       actorName: null,
       actorRole: "system",
       eventName: "document_created",
-      occurredAt: normalizeString(documentCreatedAt),
+      occurredAt: normalizeDateTime(documentCreatedAt),
     });
   }
 
   for (const event of normalizedEvents) {
+    if (!VISIBLE_TIMELINE_EVENTS.has(event.eventName)) {
+      continue;
+    }
+
     timeline.push({
       actorName: event.actorName,
       actorRole: event.actorRole ?? event.actorEmail,
@@ -160,7 +179,7 @@ function buildTimeline(
     });
   }
 
-  return dedupeTimeline(timeline).sort(compareTimelineDesc);
+  return dedupeTimeline(timeline).sort(compareTimelineAsc);
 }
 
 function collectSignatureLinks(
@@ -208,9 +227,10 @@ function normalizePayloadEvents(payload: unknown) {
     return [];
   }
 
-  const directEvent = normalizeEvent(object.event);
   const documentEvents = normalizeEventsArray(readObject(object, "document")?.events);
-  return dedupeNormalizedEvents(directEvent ? [directEvent, ...documentEvents] : documentEvents);
+  const directEvents =
+    documentEvents.length > 0 ? [] : normalizeEventCollection(object.event);
+  return dedupeNormalizedEvents([...directEvents, ...documentEvents]);
 }
 
 function normalizeSyncEvents(input: unknown) {
@@ -219,10 +239,10 @@ function normalizeSyncEvents(input: unknown) {
   }
 
   return input
-    .map((item) => {
+    .flatMap((item) => {
       const attributes = readObject(item, "attributes");
       const data = readObject(attributes, "data");
-      return normalizeEvent({
+      return normalizeEventCollection({
         data,
         name: attributes?.name,
         occurred_at: attributes?.created,
@@ -237,32 +257,62 @@ function normalizeEventsArray(input: unknown) {
   }
 
   return input
-    .map((item) => normalizeEvent(item))
+    .flatMap((item) => normalizeEventCollection(item))
     .filter((value): value is NormalizedEvent => Boolean(value));
 }
 
-function normalizeEvent(input: unknown) {
+function normalizeEventCollection(input: unknown) {
   const event = toObject(input);
   if (!event) {
-    return null;
+    return [];
   }
 
   const eventName = normalizeString(event.name);
   if (!eventName) {
-    return null;
+    return [];
   }
 
   const data = readObject(event, "data");
   const signer = readObject(data, "signer");
+  const signers = readObjectArray(data, "signers");
   const user = readObject(data, "user");
+  const occurredAt = normalizeDateTime(event.occurred_at);
 
-  return {
+  if (eventName === "add_signer" && signers.length > 0) {
+    return signers
+      .map((item) => normalizeSignerEvent(item, eventName, occurredAt))
+      .filter((value): value is NormalizedEvent => value !== null);
+  }
+
+  return [{
     actorEmail: normalizeString(signer?.email)?.toLowerCase() ?? null,
     actorName: normalizeString(signer?.name) ?? normalizeString(user?.name),
     actorRole: normalizeString(signer?.sign_as),
     eventName,
-    occurredAt: normalizeString(event.occurred_at),
+    occurredAt,
     signerUrl: normalizeString(signer?.url),
+  } satisfies NormalizedEvent];
+}
+
+function normalizeSignerEvent(
+  input: Record<string, unknown>,
+  eventName: string,
+  occurredAt: string | null,
+) {
+  const email = normalizeString(input.email)?.toLowerCase();
+  const name = normalizeString(input.name);
+
+  if (!email && !name) {
+    return null;
+  }
+
+  return {
+    actorEmail: email ?? null,
+    actorName: name ?? null,
+    actorRole: normalizeString(input.sign_as),
+    eventName,
+    occurredAt,
+    signerUrl: normalizeString(input.url),
   } satisfies NormalizedEvent;
 }
 
@@ -485,7 +535,7 @@ function dedupeTimeline(items: DocumentSignatureTimelineItem[]) {
   const result: DocumentSignatureTimelineItem[] = [];
 
   for (const item of items) {
-    const key = `${item.eventName}|${item.occurredAt ?? ""}|${item.actorName ?? ""}|${item.actorRole ?? ""}`;
+    const key = `${item.eventName}|${item.occurredAt ?? ""}|${item.actorName ?? ""}`;
     if (seen.has(key)) {
       continue;
     }
@@ -502,7 +552,7 @@ function dedupeNormalizedEvents(items: NormalizedEvent[]) {
   const result: NormalizedEvent[] = [];
 
   for (const item of items) {
-    const key = `${item.eventName}|${item.occurredAt ?? ""}|${item.actorName ?? ""}|${item.actorEmail ?? ""}|${item.actorRole ?? ""}`;
+    const key = `${item.eventName}|${item.occurredAt ?? ""}|${item.actorName ?? ""}|${item.actorEmail ?? ""}`;
     if (seen.has(key)) {
       continue;
     }
@@ -531,8 +581,8 @@ function dedupeObjects(items: Record<string, unknown>[]) {
   return result;
 }
 
-function compareTimelineDesc(left: DocumentSignatureTimelineItem, right: DocumentSignatureTimelineItem) {
-  return (right.occurredAt ?? "").localeCompare(left.occurredAt ?? "");
+function compareTimelineAsc(left: DocumentSignatureTimelineItem, right: DocumentSignatureTimelineItem) {
+  return (left.occurredAt ?? "").localeCompare(right.occurredAt ?? "");
 }
 
 function toObject(input: unknown) {
@@ -546,6 +596,34 @@ function readObject(input: unknown, key: string) {
   return toObject(object?.[key]);
 }
 
+function readObjectArray(input: unknown, key: string) {
+  const object = toObject(input);
+  const value = object?.[key];
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is Record<string, unknown> =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item),
+  );
+}
+
 function normalizeString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeDateTime(value: unknown) {
+  const normalized = normalizeString(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return normalized;
+  }
+
+  return date.toISOString();
 }

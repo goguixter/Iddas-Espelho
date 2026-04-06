@@ -22,6 +22,12 @@ const EVENT_LABELS: Record<string, string> = {
   upload: "Documento enviado",
 };
 
+const ROLE_LABELS: Record<string, string> = {
+  contractee: "Contratada",
+  contractor: "Contratante",
+  system: "Sistema",
+};
+
 export function DocumentSignatureTimelineModal({
   title = "Timeline",
   timeline,
@@ -80,8 +86,12 @@ export function DocumentSignatureTimelineModal({
                           <p className="text-sm font-semibold text-[var(--color-ink)]">
                             {EVENT_LABELS[item.eventName] ?? item.eventName.replace(/[_-]+/g, " ")}
                           </p>
-                          {item.actorName ? (
-                            <p className="mt-1 text-sm text-[var(--color-muted)]">{item.actorName}</p>
+                          {item.actorName || item.actorRole ? (
+                            <p className="mt-1 text-sm text-[var(--color-muted)]">
+                              {[item.actorName, formatRoleLabel(item.actorRole)]
+                                .filter(Boolean)
+                                .join(" • ")}
+                            </p>
                           ) : null}
                         </div>
                         <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-faint)]">
@@ -116,4 +126,12 @@ function formatTimelineDateTime(input: string) {
     second: "2-digit",
     year: "numeric",
   }).format(date);
+}
+
+function formatRoleLabel(role: string | null) {
+  if (!role) {
+    return null;
+  }
+
+  return ROLE_LABELS[role] ?? role;
 }

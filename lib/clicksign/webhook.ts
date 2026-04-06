@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
 import { deriveClicksignSignatureState, mergeClicksignRawState } from "@/lib/clicksign/state";
 import {
@@ -28,7 +28,9 @@ type ProcessedClicksignWebhook = {
 };
 
 export function verifyClicksignWebhookSignature(rawText: string, signature: string | null) {
-  if (!env.CLICKSIGN_WEBHOOK_SECRET) {
+  const secret = env.CLICKSIGN_WEBHOOK_SECRET?.trim();
+
+  if (!secret) {
     return true;
   }
 
@@ -36,8 +38,8 @@ export function verifyClicksignWebhookSignature(rawText: string, signature: stri
     return false;
   }
 
-  const expected = `sha256=${createHash("sha256")
-    .update(rawText + env.CLICKSIGN_WEBHOOK_SECRET)
+  const expected = `sha256=${createHmac("sha256", secret)
+    .update(rawText)
     .digest("hex")}`;
 
   return safeCompare(expected, signature.trim());

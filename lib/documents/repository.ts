@@ -411,6 +411,100 @@ export function upsertDocumentSignatureEvent(input: DocumentSignatureEventRecord
   );
 }
 
+export function insertClicksignWebhookDelivery(input: {
+  created_at: string;
+  event_name: string | null;
+  payload_json: string;
+  processing_error: string | null;
+  processing_status: string;
+  provider_document_id: string | null;
+  provider_envelope_id: string | null;
+  signature_header: string | null;
+  signature_valid: boolean;
+  updated_at: string;
+}) {
+  const result = db
+    .prepare(
+      `
+        INSERT INTO clicksign_webhook_deliveries (
+          provider_document_id,
+          provider_envelope_id,
+          signature_header,
+          signature_valid,
+          event_name,
+          payload_json,
+          processing_status,
+          processing_error,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    )
+    .run(
+      input.provider_document_id,
+      input.provider_envelope_id,
+      input.signature_header,
+      input.signature_valid ? 1 : 0,
+      input.event_name,
+      input.payload_json,
+      input.processing_status,
+      input.processing_error,
+      input.created_at,
+      input.updated_at,
+    );
+
+  return Number(result.lastInsertRowid);
+}
+
+export function updateClicksignWebhookDelivery(
+  id: number,
+  input: {
+    processing_error?: string | null;
+    processing_status?: string;
+    signature_valid?: boolean;
+    updated_at: string;
+  },
+) {
+  const current = db
+    .prepare(
+      `
+        SELECT *
+        FROM clicksign_webhook_deliveries
+        WHERE id = ?
+      `,
+    )
+    .get(id) as
+    | {
+        processing_error: string | null;
+        processing_status: string;
+        signature_valid: number;
+      }
+    | undefined;
+
+  if (!current) {
+    return;
+  }
+
+  db.prepare(
+    `
+      UPDATE clicksign_webhook_deliveries
+      SET
+        signature_valid = ?,
+        processing_status = ?,
+        processing_error = ?,
+        updated_at = ?
+      WHERE id = ?
+    `,
+  ).run(
+    input.signature_valid === undefined ? current.signature_valid : input.signature_valid ? 1 : 0,
+    input.processing_status ?? current.processing_status,
+    input.processing_error === undefined ? current.processing_error : input.processing_error,
+    input.updated_at,
+    id,
+  );
+}
+
 function resolvePatchValue<T>(nextValue: T | undefined, currentValue: T) {
   return nextValue === undefined ? currentValue : nextValue;
 }

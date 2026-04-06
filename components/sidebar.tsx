@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  ChevronLeft,
-  ChevronRight,
   ClipboardList,
   Database,
   FileText,
   LayoutDashboard,
+  PanelLeftOpen,
+  PanelRightOpen,
   Plane,
   Users,
   WalletCards,
@@ -53,9 +53,9 @@ export function Sidebar({
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
         >
           {collapsed ? (
-            <ChevronRight className="h-3.5 w-3.5" />
+            <PanelLeftOpen className="h-3.5 w-3.5" />
           ) : (
-            <ChevronLeft className="h-3.5 w-3.5" />
+            <PanelRightOpen className="h-3.5 w-3.5" />
           )}
         </button>
       </div>
