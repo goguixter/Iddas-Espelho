@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { env } from "@/lib/env";
+import { clicksignConfig } from "@/lib/env";
 import { deriveClicksignSignatureState, mergeClicksignRawState } from "@/lib/clicksign/state";
 import {
   getLatestDocumentSignatureRequestByDocumentProviderId,
@@ -28,7 +28,7 @@ type ProcessedClicksignWebhook = {
 };
 
 export function verifyClicksignWebhookSignature(rawText: string, signature: string | null) {
-  const secret = env.CLICKSIGN_WEBHOOK_SECRET?.trim();
+  const secret = clicksignConfig.webhookSecret?.trim();
 
   if (!secret) {
     return true;
@@ -64,11 +64,12 @@ export function processClicksignWebhookPayload(rawText: string, payload: unknown
   const occurredAt = normalizeString(normalizedPayload.event?.occurred_at) ?? new Date().toISOString();
   const eventId = buildWebhookEventId(rawText);
   const now = new Date().toISOString();
+  const parsedPayload = toObject(payload) ?? {};
 
   upsertDocumentSignatureEvent({
     created_at: now,
     id: eventId,
-    payload_json: JSON.stringify(payload),
+    payload_json: JSON.stringify(parsedPayload),
     provider_created_at: occurredAt,
     provider_event_type: eventName ?? "unknown",
     signature_request_id: request.id,
@@ -79,8 +80,8 @@ export function processClicksignWebhookPayload(rawText: string, payload: unknown
     documentId: providerDocumentId ?? request.provider_document_id,
     documentSnapshot: documentPayload,
     envelopeId: envelopeId ?? request.provider_envelope_id,
-    lastWebhook: safeParseJsonObject(rawText),
-    webhookEvent: safeParseJsonObject(rawText),
+    lastWebhook: parsedPayload,
+    webhookEvent: parsedPayload,
   });
   const nextSignersJson = resolveUpdatedSignersJson(request.signers_json, documentPayload?.signers);
   const derived = deriveClicksignSignatureState({
@@ -196,35 +197,16 @@ function resolveUpdatedSignersJson(currentSignersJson: string, documentSigners: 
   return normalized.length > 0 ? JSON.stringify(normalized) : currentSignersJson;
 }
 
-function safeParseObject(payloadJson: string) {
-  try {
-    const parsed = JSON.parse(payloadJson) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function safeParseJsonObject(rawText: string) {
-  return safeParseObject(rawText);
-}
-
 function toWebhookPayload(payload: unknown) {
   return (payload && typeof payload === "object" && !Array.isArray(payload)
     ? payload
     : {}) as ClicksignWebhookPayload;
 }
 
-function safeParseObjectFromUnknown(input: unknown) {
+function toObject(input: unknown) {
   return input && typeof input === "object" && !Array.isArray(input)
     ? (input as Record<string, unknown>)
     : null;
-}
-
-function toObject(input: unknown) {
-  return safeParseObjectFromUnknown(input);
 }
 
 function normalizeString(value: unknown) {

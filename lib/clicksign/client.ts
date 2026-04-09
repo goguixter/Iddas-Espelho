@@ -1,5 +1,5 @@
 import { safeJsonParse } from "@/lib/api/json";
-import { env } from "@/lib/env";
+import { clicksignConfig } from "@/lib/env";
 
 export class ClicksignError extends Error {
   constructor(
@@ -12,14 +12,14 @@ export class ClicksignError extends Error {
 }
 
 export async function clicksignRequest<T>(path: string, init?: RequestInit) {
-  if (!env.CLICKSIGN_API_KEY) {
+  if (!clicksignConfig.apiKey) {
     throw new ClicksignError("CLICKSIGN_API_KEY não configurada.", 500);
   }
 
-  const response = await fetch(`${env.CLICKSIGN_BASE_URL}${path}`, {
+  const response = await fetch(`${clicksignConfig.baseUrl}${path}`, {
     ...init,
     headers: {
-      Authorization: env.CLICKSIGN_API_KEY,
+      Authorization: clicksignConfig.apiKey,
       "Content-Type": "application/vnd.api+json",
       ...(init?.headers ?? {}),
     },

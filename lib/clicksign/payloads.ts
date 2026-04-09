@@ -7,11 +7,6 @@ const DEFAULT_COMMUNICATE_EVENTS = {
   signature_request: "email",
 } as const;
 
-const NOTIFICATION_DATA = {
-  attributes: {},
-  type: "notifications",
-} as const;
-
 export function buildEnvelopePayload(title: string) {
   return {
     data: {
@@ -20,8 +15,8 @@ export function buildEnvelopePayload(title: string) {
         auto_close: true,
         block_after_refusal: false,
         deadline_at: buildEnvelopeDeadlineAt(),
-        default_message: buildDefaultEnvelopeMessage(title),
-        default_subject: buildDefaultEnvelopeSubject(title),
+        default_message: buildDefaultEnvelopeMessage(),
+        default_subject: buildDefaultEnvelopeSubject(),
         locale: "pt-BR",
         name: title,
         remind_interval: 3,
@@ -119,7 +114,26 @@ export function buildEnvelopeStatusPayload(envelopeId: string) {
 
 export function buildNotificationPayload() {
   return {
-    data: NOTIFICATION_DATA,
+    data: {
+      type: "notifications",
+      attributes: {
+        message: "Seu contrato de viagem está disponível para assinatura digital.",
+        email_customization: {
+          subject: "Seu contrato de viagem está pronto para assinatura ✈️",
+          head: "Finalize sua viagem com segurança",
+          greeting: "Olá, tudo bem? 😊",
+          principal:
+            "Seu contrato já está disponível para assinatura, com todas as condições da sua viagem devidamente formalizadas. Para dar continuidade ao seu atendimento e garantir sua reserva, basta realizar a assinatura digital no link abaixo. O processo é rápido, seguro e pode ser feito diretamente pelo celular ou computador.",
+          button: "Assinar contrato agora",
+          final:
+            "Após a assinatura, nossa equipe seguirá com todo o acompanhamento da sua viagem, garantindo uma experiência tranquila do início ao embarque. Se precisar de qualquer suporte, estamos à disposição 🤝✈️",
+          align: "center",
+          show_token: false,
+          show_qrcode: false,
+          show_details: true,
+        },
+      },
+    },
   };
 }
 
@@ -148,20 +162,31 @@ function buildEnvelopeDeadlineAt() {
   return deadline.toISOString();
 }
 
-function buildDefaultEnvelopeSubject(title: string) {
-  const subject = `Assinatura pendente: ${title}`.trim();
-  return subject.slice(0, 100);
+function buildDefaultEnvelopeSubject() {
+  return "Seu contrato de viagem está pronto para assinatura ✈️";
 }
 
-function buildDefaultEnvelopeMessage(title: string) {
-  return `Olá, este documento foi disponibilizado para assinatura: ${title}. Por favor, revise e conclua a assinatura.`;
+function buildDefaultEnvelopeMessage() {
+  return [
+    "Olá, tudo bem? 😊",
+    "",
+    "Preparamos o seu contrato referente à sua viagem com a Confins do Mundo Viagens.",
+    "",
+    "Para dar andamento na sua reserva e garantir todas as condições alinhadas, basta realizar a assinatura digital no link enviado neste e-mail.",
+    "",
+    "O processo é rápido, seguro e pode ser feito diretamente pelo celular ou computador.",
+    "",
+    "Caso tenha qualquer dúvida antes de assinar, fico à disposição para te auxiliar 😊",
+    "",
+    "Seguimos acompanhando toda a sua viagem de perto, desde agora até o seu embarque ✈️",
+  ].join("\n");
 }
 
 function sanitizeFilename(value: string) {
   return value
     .normalize("NFD")
-    .replace(/[^\w\s-]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\\/:*?"<>|]/g, " ")
     .trim()
-    .replace(/\s+/g, "_")
-    .toLowerCase();
+    .replace(/\s+/g, " ");
 }

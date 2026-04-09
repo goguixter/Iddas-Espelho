@@ -9,10 +9,6 @@ type ClicksignRawState = {
   envelopeId?: string | null;
   lastWebhook?: Record<string, unknown> | null;
   send?: Record<string, unknown> | null;
-  sync?: {
-    envelope?: Record<string, unknown> | null;
-    events?: Record<string, unknown>[];
-  } | null;
   webhookEvents?: Record<string, unknown>[];
 };
 
@@ -121,8 +117,6 @@ export function mergeClicksignRawState(
     envelopeId?: string | null;
     lastWebhook?: Record<string, unknown> | null;
     send?: Record<string, unknown> | null;
-    syncEnvelope?: Record<string, unknown> | null;
-    syncEvents?: Record<string, unknown>[];
     webhookEvent?: Record<string, unknown> | null;
   },
 ) {
@@ -138,13 +132,6 @@ export function mergeClicksignRawState(
     envelopeId: patch.envelopeId ?? current.envelopeId ?? null,
     lastWebhook: patch.lastWebhook ?? current.lastWebhook ?? null,
     send: patch.send ?? current.send ?? null,
-    sync:
-      patch.syncEnvelope || patch.syncEvents
-        ? {
-            envelope: patch.syncEnvelope ?? current.sync?.envelope ?? null,
-            events: patch.syncEvents ?? current.sync?.events ?? [],
-          }
-        : current.sync ?? null,
     webhookEvents: nextWebhookEvents,
   };
 
@@ -209,7 +196,6 @@ function collectNormalizedEvents(state: ClicksignRawState) {
     ...normalizePayloadEvents(state.lastWebhook),
     ...normalizePayloadArray(state.webhookEvents),
     ...normalizePayloadEvents(state.documentSnapshot),
-    ...normalizeSyncEvents(state.sync?.events),
   ]);
 }
 
@@ -231,24 +217,6 @@ function normalizePayloadEvents(payload: unknown) {
   const directEvents =
     documentEvents.length > 0 ? [] : normalizeEventCollection(object.event);
   return dedupeNormalizedEvents([...directEvents, ...documentEvents]);
-}
-
-function normalizeSyncEvents(input: unknown) {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-
-  return input
-    .flatMap((item) => {
-      const attributes = readObject(item, "attributes");
-      const data = readObject(attributes, "data");
-      return normalizeEventCollection({
-        data,
-        name: attributes?.name,
-        occurred_at: attributes?.created,
-      });
-    })
-    .filter((value): value is NormalizedEvent => Boolean(value));
 }
 
 function normalizeEventsArray(input: unknown) {
@@ -318,13 +286,10 @@ function normalizeSignerEvent(
 
 function extractDocumentStatus(state: ClicksignRawState) {
   const lastWebhookDocument = readObject(state.lastWebhook, "document");
-  const syncEnvelopeData = readObject(state.sync?.envelope, "data");
-  const syncEnvelopeAttributes = readObject(syncEnvelopeData, "attributes");
 
   return (
     normalizeString(state.documentSnapshot?.status) ??
-    normalizeString(lastWebhookDocument?.status) ??
-    normalizeString(syncEnvelopeAttributes?.status)
+    normalizeString(lastWebhookDocument?.status)
   );
 }
 

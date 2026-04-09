@@ -26,9 +26,13 @@ cp .env.example .env.local
 
 Variáveis:
 
-- `CLICKSIGN_BASE_URL`: base da API da Clicksign (`sandbox` ou `produção`)
-- `CLICKSIGN_API_KEY`: token da conta Clicksign
-- `CLICKSIGN_WEBHOOK_SECRET`: segredo HMAC do webhook Clicksign
+- `CLICKSIGN_PROFILE`: perfil ativo da Clicksign (`sandbox` ou `production`)
+- `CLICKSIGN_SANDBOX_BASE_URL`: base da API sandbox
+- `CLICKSIGN_SANDBOX_API_KEY`: token sandbox
+- `CLICKSIGN_SANDBOX_WEBHOOK_SECRET`: segredo HMAC sandbox
+- `CLICKSIGN_PRODUCTION_BASE_URL`: base da API de produção
+- `CLICKSIGN_PRODUCTION_API_KEY`: token de produção
+- `CLICKSIGN_PRODUCTION_WEBHOOK_SECRET`: segredo HMAC de produção
 - `CLICKSIGN_CONTRATADA_SIGNER_NAME`: nome padrão da contratada
 - `CLICKSIGN_CONTRATADA_SIGNER_EMAIL`: e-mail padrão da contratada
 - `CLICKSIGN_CONTRATADA_SIGNER_DOCUMENT`: CPF/CNPJ da contratada
@@ -55,6 +59,36 @@ ngrok http 3000
 ```
 
 Cadastre no Clicksign a URL pública terminando em `/api/clicksign/webhook`.
+
+Para alternar entre sandbox e produção sem trocar todas as credenciais, mude apenas:
+
+```bash
+CLICKSIGN_PROFILE=sandbox
+```
+
+ou
+
+```bash
+CLICKSIGN_PROFILE=production
+```
+
+Depois de trocar o perfil, reinicie o servidor.
+
+## Operação
+
+Checklist para validar o ambiente ativo da Clicksign:
+
+1. conferir `CLICKSIGN_PROFILE` no `.env.local`
+2. reiniciar o servidor
+3. enviar um contrato de teste
+4. confirmar no log `document.clicksign.notification-payload` o `profile`
+5. confirmar em qual conta da Clicksign o envelope apareceu
+
+Sobre notificações por e-mail:
+
+- o servidor só precisa estar ligado para criar envelope, ativar o fluxo e disparar a notificação
+- depois que a Clicksign aceita a notificação, a entrega do e-mail não depende mais do seu servidor
+- os webhooks continuam dependendo da sua URL pública responder
 
 ## Rotas internas
 

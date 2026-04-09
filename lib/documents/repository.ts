@@ -14,6 +14,53 @@ import type {
   RecentOrcamentoDocumentOption,
 } from "@/lib/documents/types";
 
+const DOCUMENT_SIGNATURE_REQUEST_SELECT = `
+  SELECT
+    id,
+    document_record_id,
+    provider,
+    provider_envelope_id,
+    provider_document_id,
+    status,
+    signers_json,
+    signature_links_json,
+    last_error,
+    raw_response_json,
+    created_at,
+    updated_at,
+    sent_at,
+    signed_at
+  FROM document_signature_requests
+`;
+
+const DOCUMENT_HISTORY_SELECT = `
+  SELECT
+    dr.id,
+    dr.template_key,
+    dr.template_version,
+    dr.entity_type,
+    dr.entity_id,
+    dr.title,
+    dr.payload_json,
+    dr.html_snapshot,
+    dr.created_at,
+    dr.updated_at,
+    dsr.status AS signature_status,
+    dsr.last_error AS signature_last_error,
+    dsr.raw_response_json AS signature_raw_response_json,
+    dsr.signers_json AS signature_signers_json,
+    dsr.sent_at AS signature_sent_at,
+    dsr.signed_at AS signature_signed_at
+  FROM document_records dr
+  LEFT JOIN document_signature_requests dsr ON dsr.id = (
+    SELECT inner_dsr.id
+    FROM document_signature_requests inner_dsr
+    WHERE inner_dsr.document_record_id = dr.id
+    ORDER BY datetime(inner_dsr.created_at) DESC, inner_dsr.id DESC
+    LIMIT 1
+  )
+`;
+
 export function listDocumentTemplates() {
   return db
     .prepare(
@@ -52,31 +99,7 @@ export function listDocumentRecords(limit = 20) {
   const rows = db
     .prepare(
       `
-        SELECT
-          dr.id,
-          dr.template_key,
-          dr.template_version,
-          dr.entity_type,
-          dr.entity_id,
-          dr.title,
-          dr.payload_json,
-          dr.html_snapshot,
-          dr.created_at,
-          dr.updated_at,
-          dsr.status AS signature_status,
-          dsr.last_error AS signature_last_error,
-          dsr.raw_response_json AS signature_raw_response_json,
-          dsr.signers_json AS signature_signers_json,
-          dsr.sent_at AS signature_sent_at,
-          dsr.signed_at AS signature_signed_at
-        FROM document_records dr
-        LEFT JOIN document_signature_requests dsr ON dsr.id = (
-          SELECT inner_dsr.id
-          FROM document_signature_requests inner_dsr
-          WHERE inner_dsr.document_record_id = dr.id
-          ORDER BY datetime(inner_dsr.created_at) DESC, inner_dsr.id DESC
-          LIMIT 1
-        )
+        ${DOCUMENT_HISTORY_SELECT}
         ORDER BY datetime(dr.created_at) DESC, dr.id DESC
         LIMIT ?
       `,
@@ -183,89 +206,30 @@ export function insertDocumentRecord(input: Omit<DocumentRecord, "id">) {
 }
 
 export function getLatestDocumentSignatureRequest(documentRecordId: number) {
-  return db
-    .prepare(
-      `
-        SELECT
-          id,
-          document_record_id,
-          provider,
-          provider_envelope_id,
-          provider_document_id,
-          status,
-          signers_json,
-          signature_links_json,
-          last_error,
-          raw_response_json,
-          created_at,
-          updated_at,
-          sent_at,
-          signed_at
-        FROM document_signature_requests
-        WHERE document_record_id = ?
-        ORDER BY datetime(created_at) DESC, id DESC
-        LIMIT 1
-      `,
-    )
-    .get(documentRecordId) as DocumentSignatureRequestRecord | undefined;
+  return getDocumentSignatureRequestWhere(
+    "document_record_id = ? ORDER BY datetime(created_at) DESC, id DESC LIMIT 1",
+    documentRecordId,
+  );
+}
+
+export function getDocumentSignatureRequestById(id: number) {
+  return getDocumentSignatureRequestWhere("id = ?", id);
 }
 
 export function getLatestDocumentSignatureRequestByEnvelopeId(providerEnvelopeId: string) {
-  return db
-    .prepare(
-      `
-        SELECT
-          id,
-          document_record_id,
-          provider,
-          provider_envelope_id,
-          provider_document_id,
-          status,
-          signers_json,
-          signature_links_json,
-          last_error,
-          raw_response_json,
-          created_at,
-          updated_at,
-          sent_at,
-          signed_at
-        FROM document_signature_requests
-        WHERE provider_envelope_id = ?
-        ORDER BY datetime(created_at) DESC, id DESC
-        LIMIT 1
-      `,
-    )
-    .get(providerEnvelopeId) as DocumentSignatureRequestRecord | undefined;
+  return getDocumentSignatureRequestWhere(
+    "provider_envelope_id = ? ORDER BY datetime(created_at) DESC, id DESC LIMIT 1",
+    providerEnvelopeId,
+  );
 }
 
 export function getLatestDocumentSignatureRequestByDocumentProviderId(
   providerDocumentId: string,
 ) {
-  return db
-    .prepare(
-      `
-        SELECT
-          id,
-          document_record_id,
-          provider,
-          provider_envelope_id,
-          provider_document_id,
-          status,
-          signers_json,
-          signature_links_json,
-          last_error,
-          raw_response_json,
-          created_at,
-          updated_at,
-          sent_at,
-          signed_at
-        FROM document_signature_requests
-        WHERE provider_document_id = ?
-        ORDER BY datetime(created_at) DESC, id DESC
-        LIMIT 1
-      `,
-    )
-    .get(providerDocumentId) as DocumentSignatureRequestRecord | undefined;
+  return getDocumentSignatureRequestWhere(
+    "provider_document_id = ? ORDER BY datetime(created_at) DESC, id DESC LIMIT 1",
+    providerDocumentId,
+  );
 }
 
 export function insertDocumentSignatureRequest(
@@ -358,26 +322,6 @@ export function updateDocumentSignatureRequest(
     resolvePatchValue(input.signed_at, current.signed_at),
     id,
   );
-}
-
-export function listDocumentSignatureEvents(signatureRequestId: number) {
-  return db
-    .prepare(
-      `
-        SELECT
-          id,
-          signature_request_id,
-          provider_event_type,
-          provider_created_at,
-          payload_json,
-          created_at,
-          updated_at
-        FROM document_signature_events
-        WHERE signature_request_id = ?
-        ORDER BY datetime(COALESCE(provider_created_at, created_at)) DESC, id DESC
-      `,
-    )
-    .all(signatureRequestId) as DocumentSignatureEventRecord[];
 }
 
 export function upsertDocumentSignatureEvent(input: DocumentSignatureEventRecord) {
@@ -507,6 +451,17 @@ export function updateClicksignWebhookDelivery(
 
 function resolvePatchValue<T>(nextValue: T | undefined, currentValue: T) {
   return nextValue === undefined ? currentValue : nextValue;
+}
+
+function getDocumentSignatureRequestWhere(whereClause: string, value: number | string) {
+  return db
+    .prepare(
+      `
+        ${DOCUMENT_SIGNATURE_REQUEST_SELECT}
+        WHERE ${whereClause}
+      `,
+    )
+    .get(value) as DocumentSignatureRequestRecord | undefined;
 }
 
 export function searchOrcamentoDocumentOptions(query: string, limit = 12) {

@@ -11,10 +11,11 @@ import {
 } from "@/lib/clicksign/payloads";
 import { mergeClicksignRawState } from "@/lib/clicksign/state";
 import type { ClicksignSignerInput } from "@/lib/clicksign/types";
-import { env } from "@/lib/env";
+import { clicksignConfig, env } from "@/lib/env";
 import { normalizeDocumentNumber } from "@/lib/documents/formatters";
 import { renderDocumentPdf } from "@/lib/documents/pdf";
 import {
+  getDocumentSignatureRequestById,
   getDocumentRecord,
   getOrcamentoDocumentSource,
   getPessoaDocumentSource,
@@ -49,123 +50,56 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
   });
 
   try {
-    const pdfBuffer = await renderDocumentPdf(document.html_snapshot);
-    const base64 = `data:application/pdf;base64,${pdfBuffer.toString("base64")}`;
-    const envelopePayload = buildEnvelopePayload(document.title);
-    const envelopeAttributes = envelopePayload.data.attributes;
+    const base64 = await renderDocumentPdfBase64(document.html_snapshot);
+    const envelopeId = await createEnvelope(document.id, document.title);
 
-    logSync("info", "document.clicksign.envelope-payload", {
-      documentId: document.id,
-      envelopeAttributes,
+    persistSendState(requestId, {
+      envelopeId,
+      rawResponseJson: mergeClicksignRawState(getCurrentSendState(requestId), {
+        envelopeId,
+        send: {
+          envelopeId,
+          signers,
+        },
+      }),
     });
 
-    const envelopeResponse = await runClicksignStep(
+    const clicksignDocumentId = await createEnvelopeDocument(
       document.id,
-      "create-envelope",
-      "/api/v3/envelopes",
-      () =>
-        clicksignRequest<{ data: { id: string } }>("/api/v3/envelopes", {
-          body: JSON.stringify(envelopePayload),
-          method: "POST",
-        }),
+      envelopeId,
+      document.title,
+      base64,
     );
 
-    const envelopeId = envelopeResponse.data.id;
+    persistSendState(requestId, {
+      documentId: clicksignDocumentId,
+      envelopeId,
+      rawResponseJson: mergeClicksignRawState(getCurrentSendState(requestId), {
+        documentId: clicksignDocumentId,
+        envelopeId,
+        send: {
+          documentId: clicksignDocumentId,
+          envelopeId,
+          signers,
+        },
+      }),
+    });
 
-    const documentResponse = await runClicksignStep(
+    const createdSigners = await createEnvelopeSigners(
       document.id,
-      "create-document",
-      `/api/v3/envelopes/${envelopeId}/documents`,
-      () =>
-        clicksignRequest<{ data: { id: string } }>(`/api/v3/envelopes/${envelopeId}/documents`, {
-          body: JSON.stringify(buildDocumentPayload(document.title, base64)),
-          method: "POST",
-        }),
+      envelopeId,
+      clicksignDocumentId,
+      signers,
     );
 
-    const clicksignDocumentId = documentResponse.data.id;
+    await activateEnvelope(document.id, envelopeId);
+    await notifyEnvelope(document.id, envelopeId);
 
-    const createdSigners = [];
-
-    for (const signer of signers) {
-      const signerPayload = buildSignerPayload(signer);
-      const signerAttributes = signerPayload.data.attributes;
-
-      logSync("info", "document.clicksign.signer-payload", {
-        documentId: document.id,
-        signerAttributes,
-      });
-
-      const signerResponse = await runClicksignStep(
-        document.id,
-        "create-signer",
-        `/api/v3/envelopes/${envelopeId}/signers`,
-        () =>
-          clicksignRequest<{ data: { id: string } }>(`/api/v3/envelopes/${envelopeId}/signers`, {
-            body: JSON.stringify(signerPayload),
-            method: "POST",
-          }),
-      );
-
-      const signerId = signerResponse.data.id;
-      createdSigners.push({ ...signer, id: signerId });
-
-      await runClicksignStep(
-        document.id,
-        "create-qualification-requirement",
-        `/api/v3/envelopes/${envelopeId}/requirements`,
-        () =>
-          clicksignRequest(`/api/v3/envelopes/${envelopeId}/requirements`, {
-            body: JSON.stringify(
-              buildQualificationRequirementPayload(
-                clicksignDocumentId,
-                signerId,
-                signer.qualificationRole,
-              ),
-            ),
-            method: "POST",
-          }),
-      );
-
-      await runClicksignStep(
-        document.id,
-        "create-auth-requirement",
-        `/api/v3/envelopes/${envelopeId}/requirements`,
-        () =>
-          clicksignRequest(`/api/v3/envelopes/${envelopeId}/requirements`, {
-            body: JSON.stringify(buildAuthRequirementPayload(clicksignDocumentId, signerId)),
-            method: "POST",
-          }),
-      );
-    }
-
-    await runClicksignStep(
-      document.id,
-      "update-envelope-status",
-      `/api/v3/envelopes/${envelopeId}`,
-      () =>
-        clicksignRequest(`/api/v3/envelopes/${envelopeId}`, {
-          body: JSON.stringify(buildEnvelopeStatusPayload(envelopeId)),
-          method: "PATCH",
-        }),
-    );
-
-    await runClicksignStep(
-      document.id,
-      "notify-envelope",
-      `/api/v3/envelopes/${envelopeId}/notifications`,
-      () =>
-        clicksignRequest(`/api/v3/envelopes/${envelopeId}/notifications`, {
-          body: JSON.stringify(buildNotificationPayload()),
-          method: "POST",
-        }),
-    );
-
-    updateDocumentSignatureRequest(requestId, {
-      last_error: null,
-      provider_document_id: clicksignDocumentId,
-      provider_envelope_id: envelopeId,
-      raw_response_json: mergeClicksignRawState("{}", {
+    persistSendState(requestId, {
+      documentId: clicksignDocumentId,
+      envelopeId,
+      lastError: null,
+      rawResponseJson: mergeClicksignRawState(getCurrentSendState(requestId), {
         documentId: clicksignDocumentId,
         envelopeId,
         send: {
@@ -174,10 +108,9 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
           signers: createdSigners,
         },
       }),
-      sent_at: new Date().toISOString(),
-      signers_json: JSON.stringify(createdSigners),
+      sentAt: new Date().toISOString(),
+      signersJson: JSON.stringify(createdSigners),
       status: "sent",
-      updated_at: new Date().toISOString(),
     });
 
     return {
@@ -194,6 +127,201 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
     });
     throw error;
   }
+}
+
+async function renderDocumentPdfBase64(htmlSnapshot: string) {
+  const pdfBuffer = await renderDocumentPdf(htmlSnapshot);
+  return `data:application/pdf;base64,${pdfBuffer.toString("base64")}`;
+}
+
+async function createEnvelope(documentId: number, title: string) {
+  const envelopePayload = buildEnvelopePayload(title);
+
+  logSync("info", "document.clicksign.envelope-payload", {
+    documentId,
+    envelopeAttributes: envelopePayload.data.attributes,
+  });
+
+  const envelopeResponse = await runClicksignStep(
+    documentId,
+    "create-envelope",
+    "/api/v3/envelopes",
+    () =>
+      clicksignRequest<{ data: { id: string } }>("/api/v3/envelopes", {
+        body: JSON.stringify(envelopePayload),
+        method: "POST",
+      }),
+  );
+
+  return envelopeResponse.data.id;
+}
+
+async function createEnvelopeDocument(
+  documentId: number,
+  envelopeId: string,
+  title: string,
+  base64: string,
+) {
+  const documentResponse = await runClicksignStep(
+    documentId,
+    "create-document",
+    `/api/v3/envelopes/${envelopeId}/documents`,
+    () =>
+      clicksignRequest<{ data: { id: string } }>(`/api/v3/envelopes/${envelopeId}/documents`, {
+        body: JSON.stringify(buildDocumentPayload(title, base64)),
+        method: "POST",
+      }),
+  );
+
+  return documentResponse.data.id;
+}
+
+async function createEnvelopeSigners(
+  documentId: number,
+  envelopeId: string,
+  clicksignDocumentId: string,
+  signers: ClicksignSignerInput[],
+) {
+  const createdSigners: Array<ClicksignSignerInput & { id: string }> = [];
+
+  for (const signer of signers) {
+    const signerId = await createSigner(documentId, envelopeId, signer);
+    createdSigners.push({ ...signer, id: signerId });
+    await createSignerRequirements(
+      documentId,
+      envelopeId,
+      clicksignDocumentId,
+      signerId,
+      signer,
+    );
+  }
+
+  return createdSigners;
+}
+
+async function createSigner(
+  documentId: number,
+  envelopeId: string,
+  signer: ClicksignSignerInput,
+) {
+  const signerPayload = buildSignerPayload(signer);
+
+  logSync("info", "document.clicksign.signer-payload", {
+    documentId,
+    signerAttributes: signerPayload.data.attributes,
+  });
+
+  const signerResponse = await runClicksignStep(
+    documentId,
+    "create-signer",
+    `/api/v3/envelopes/${envelopeId}/signers`,
+    () =>
+      clicksignRequest<{ data: { id: string } }>(`/api/v3/envelopes/${envelopeId}/signers`, {
+        body: JSON.stringify(signerPayload),
+        method: "POST",
+      }),
+  );
+
+  return signerResponse.data.id;
+}
+
+async function createSignerRequirements(
+  documentId: number,
+  envelopeId: string,
+  clicksignDocumentId: string,
+  signerId: string,
+  signer: ClicksignSignerInput,
+) {
+  await runClicksignStep(
+    documentId,
+    "create-qualification-requirement",
+    `/api/v3/envelopes/${envelopeId}/requirements`,
+    () =>
+      clicksignRequest(`/api/v3/envelopes/${envelopeId}/requirements`, {
+        body: JSON.stringify(
+          buildQualificationRequirementPayload(
+            clicksignDocumentId,
+            signerId,
+            signer.qualificationRole,
+          ),
+        ),
+        method: "POST",
+      }),
+  );
+
+  await runClicksignStep(
+    documentId,
+    "create-auth-requirement",
+    `/api/v3/envelopes/${envelopeId}/requirements`,
+    () =>
+      clicksignRequest(`/api/v3/envelopes/${envelopeId}/requirements`, {
+        body: JSON.stringify(buildAuthRequirementPayload(clicksignDocumentId, signerId)),
+        method: "POST",
+      }),
+  );
+}
+
+async function activateEnvelope(documentId: number, envelopeId: string) {
+  await runClicksignStep(
+    documentId,
+    "update-envelope-status",
+    `/api/v3/envelopes/${envelopeId}`,
+    () =>
+      clicksignRequest(`/api/v3/envelopes/${envelopeId}`, {
+        body: JSON.stringify(buildEnvelopeStatusPayload(envelopeId)),
+        method: "PATCH",
+      }),
+  );
+}
+
+async function notifyEnvelope(documentId: number, envelopeId: string) {
+  const notificationPayload = buildNotificationPayload();
+
+  logSync("info", "document.clicksign.notification-payload", {
+    documentId,
+    notificationAttributes: notificationPayload.data.attributes,
+    profile: clicksignConfig.profile,
+  });
+
+  await runClicksignStep(
+    documentId,
+    "notify-envelope",
+    `/api/v3/envelopes/${envelopeId}/notifications`,
+    () =>
+      clicksignRequest(`/api/v3/envelopes/${envelopeId}/notifications`, {
+        body: JSON.stringify(notificationPayload),
+        method: "POST",
+      }),
+  );
+}
+
+function getCurrentSendState(requestId: number) {
+  const request = getDocumentSignatureRequestById(requestId);
+  return request?.raw_response_json ?? "{}";
+}
+
+function persistSendState(
+  requestId: number,
+  input: {
+    documentId?: string | null;
+    envelopeId?: string | null;
+    lastError?: string | null;
+    rawResponseJson: string;
+    sentAt?: string | null;
+    signersJson?: string;
+    status?: string;
+  },
+) {
+  updateDocumentSignatureRequest(requestId, {
+    last_error: input.lastError,
+    provider_document_id: input.documentId,
+    provider_envelope_id: input.envelopeId,
+    raw_response_json: input.rawResponseJson,
+    sent_at: input.sentAt,
+    signers_json: input.signersJson,
+    status: input.status,
+    updated_at: new Date().toISOString(),
+  });
 }
 
 function resolveSigners(entityType: string, entityId: string): ClicksignSignerInput[] {
