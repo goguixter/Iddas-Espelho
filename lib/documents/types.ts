@@ -42,6 +42,8 @@ export type DocumentRecord = {
 
 export type DocumentHistoryRecord = DocumentRecord & {
   signatureLastError: string | null;
+  signatureProviderDocumentId: string | null;
+  signatureProviderEnvelopeId: string | null;
   signatureRawResponseJson: string | null;
   signatureSignersJson: string | null;
   signatureSentAt: string | null;

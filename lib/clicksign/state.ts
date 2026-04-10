@@ -30,6 +30,7 @@ const VISIBLE_TIMELINE_EVENTS = new Set([
   "deadline",
   "document_closed",
   "document_created",
+  "document_deleted",
   "refusal",
   "sign",
   "signature_started",
@@ -434,6 +435,10 @@ function resolveSignatureStatus({
     return "canceled";
   }
 
+  if (normalizedDocumentStatus === "deleted") {
+    return "deleted";
+  }
+
   if (normalizedDocumentStatus === "closed") {
     return "signed";
   }
@@ -444,6 +449,10 @@ function resolveSignatureStatus({
 
   if (eventNames.has("cancel")) {
     return "canceled";
+  }
+
+  if (eventNames.has("document_deleted")) {
+    return "deleted";
   }
 
   if (eventNames.has("auto_close") || eventNames.has("document_closed")) {

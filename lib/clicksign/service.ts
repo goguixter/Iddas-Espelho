@@ -1,7 +1,12 @@
+import {
+  canDeleteDraftDocumentSignature,
+  isDocumentSignatureLocked,
+} from "@/lib/clicksign/actions";
 import { clicksignRequest } from "@/lib/clicksign/client";
 import {
   buildAuthRequirementPayload,
   buildDocumentPayload,
+  buildDocumentStatusPayload,
   buildEnvelopePayload,
   buildEnvelopeStatusPayload,
   buildNotificationPayload,
@@ -17,43 +22,33 @@ import { renderDocumentPdf } from "@/lib/documents/pdf";
 import {
   getDocumentSignatureRequestById,
   getDocumentRecord,
+  insertDocumentSignatureRequest,
+  getLatestDocumentSignatureRequest,
   getOrcamentoDocumentSource,
   getPessoaDocumentSource,
-  insertDocumentSignatureRequest,
   updateDocumentSignatureRequest,
 } from "@/lib/documents/repository";
 import { logSync } from "@/lib/sync/logger";
 
 export async function sendDocumentToClicksign(documentRecordId: number) {
-  const document = getDocumentRecord(documentRecordId);
+  const document = requireDocumentRecord(documentRecordId);
+  const existingRequest = getLatestDocumentSignatureRequest(document.id);
 
-  if (!document) {
-    throw new Error("Documento não encontrado.");
+  if (isDocumentSignatureLocked(toSignatureActionState(existingRequest))) {
+    throw new ServiceError(
+      "Este documento já foi enviado para assinatura e não pode ser reenviado.",
+      409,
+    );
   }
 
   const signers = resolveSigners(document.entity_type, document.entity_id);
-  const now = new Date().toISOString();
-  const requestId = insertDocumentSignatureRequest({
-    created_at: now,
-    document_record_id: document.id,
-    last_error: null,
-    provider: "clicksign",
-    provider_document_id: null,
-    provider_envelope_id: null,
-    raw_response_json: "{}",
-    signature_links_json: "{}",
-    signed_at: null,
-    signers_json: JSON.stringify(signers),
-    sent_at: null,
-    status: "processing",
-    updated_at: now,
-  });
+  const requestId = createProcessingSignatureRequest(document.id, signers);
 
   try {
     const base64 = await renderDocumentPdfBase64(document.html_snapshot);
     const envelopeId = await createEnvelope(document.id, document.title);
 
-    persistSendState(requestId, {
+    persistRequestState(requestId, {
       envelopeId,
       rawResponseJson: mergeClicksignRawState(getCurrentSendState(requestId), {
         envelopeId,
@@ -71,7 +66,7 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
       base64,
     );
 
-    persistSendState(requestId, {
+    persistRequestState(requestId, {
       documentId: clicksignDocumentId,
       envelopeId,
       rawResponseJson: mergeClicksignRawState(getCurrentSendState(requestId), {
@@ -95,7 +90,7 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
     await activateEnvelope(document.id, envelopeId);
     await notifyEnvelope(document.id, envelopeId);
 
-    persistSendState(requestId, {
+    persistRequestState(requestId, {
       documentId: clicksignDocumentId,
       envelopeId,
       lastError: null,
@@ -127,6 +122,53 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
     });
     throw error;
   }
+}
+
+export async function cancelDocumentSignature(documentRecordId: number) {
+  const request = getCancelableSignatureRequest(documentRecordId);
+  const now = new Date().toISOString();
+
+  await runClicksignStep(
+    documentRecordId,
+    "cancel-document",
+    `/api/v3/envelopes/${request.provider_envelope_id}/documents/${request.provider_document_id}`,
+    () =>
+      clicksignRequest(
+        `/api/v3/envelopes/${request.provider_envelope_id}/documents/${request.provider_document_id}`,
+        {
+          body: JSON.stringify(
+            buildDocumentStatusPayload(request.provider_document_id!, "canceled"),
+          ),
+          method: "PATCH",
+        },
+      ),
+  );
+
+  persistLocalDocumentStatus(request, "cancel", "canceled", now);
+
+  return { status: "canceled" };
+}
+
+export async function deleteDraftDocumentSignature(documentRecordId: number) {
+  const request = getDeletableSignatureRequest(documentRecordId);
+  const now = new Date().toISOString();
+
+  await runClicksignStep(
+    documentRecordId,
+    "delete-document",
+    `/api/v3/envelopes/${request.provider_envelope_id}/documents/${request.provider_document_id}`,
+    () =>
+      clicksignRequest(
+        `/api/v3/envelopes/${request.provider_envelope_id}/documents/${request.provider_document_id}`,
+        {
+          method: "DELETE",
+        },
+      ),
+  );
+
+  persistLocalDocumentStatus(request, "document_deleted", "deleted", now);
+
+  return { status: "deleted" };
 }
 
 async function renderDocumentPdfBase64(htmlSnapshot: string) {
@@ -300,7 +342,7 @@ function getCurrentSendState(requestId: number) {
   return request?.raw_response_json ?? "{}";
 }
 
-function persistSendState(
+function persistRequestState(
   requestId: number,
   input: {
     documentId?: string | null;
@@ -322,6 +364,126 @@ function persistSendState(
     status: input.status,
     updated_at: new Date().toISOString(),
   });
+}
+
+function persistLocalDocumentStatus(
+  request: NonNullable<ReturnType<typeof getLatestDocumentSignatureRequest>>,
+  eventName: "cancel" | "document_deleted",
+  documentStatus: "canceled" | "deleted",
+  occurredAt: string,
+) {
+  persistRequestState(request.id, {
+    documentId: request.provider_document_id,
+    envelopeId: request.provider_envelope_id,
+    lastError: null,
+    rawResponseJson: mergeClicksignRawState(request.raw_response_json, {
+      documentId: request.provider_document_id,
+      documentSnapshot: { status: documentStatus },
+      envelopeId: request.provider_envelope_id,
+      lastWebhook: buildLocalDocumentEvent(eventName, documentStatus, occurredAt),
+      webhookEvent: buildLocalDocumentEvent(eventName, documentStatus, occurredAt),
+    }),
+    sentAt: request.sent_at,
+    signersJson: request.signers_json,
+    status: documentStatus,
+  });
+}
+
+function getCancelableSignatureRequest(documentRecordId: number) {
+  const request = getLatestDocumentSignatureRequest(documentRecordId);
+
+  if (!request?.provider_envelope_id || !request.provider_document_id) {
+    throw new ServiceError("Documento de assinatura não encontrado para este registro.", 404);
+  }
+
+  return request;
+}
+
+function getDeletableSignatureRequest(documentRecordId: number) {
+  const request = getLatestDocumentSignatureRequest(documentRecordId);
+
+  if (!request?.provider_envelope_id || !request.provider_document_id) {
+    throw new ServiceError("Documento de assinatura não encontrado para este registro.", 404);
+  }
+
+  if (!canDeleteDraftDocumentSignature(toSignatureActionState(request))) {
+    throw new ServiceError("Este documento só pode ser excluído enquanto ainda estiver em draft.", 409);
+  }
+
+  return request;
+}
+
+function buildLocalDocumentEvent(
+  eventName: "cancel" | "document_deleted",
+  documentStatus: string,
+  occurredAt: string,
+) {
+  return {
+    document: {
+      status: documentStatus,
+    },
+    event: {
+      occurred_at: occurredAt,
+      name: eventName,
+    },
+  };
+}
+
+class ServiceError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+function createProcessingSignatureRequest(
+  documentRecordId: number,
+  signers: ClicksignSignerInput[],
+) {
+  const now = new Date().toISOString();
+
+  return insertDocumentSignatureRequest({
+    created_at: now,
+    document_record_id: documentRecordId,
+    last_error: null,
+    provider: "clicksign",
+    provider_document_id: null,
+    provider_envelope_id: null,
+    raw_response_json: "{}",
+    signature_links_json: "{}",
+    signed_at: null,
+    signers_json: JSON.stringify(signers),
+    sent_at: null,
+    status: "processing",
+    updated_at: now,
+  });
+}
+
+function requireDocumentRecord(documentRecordId: number) {
+  const document = getDocumentRecord(documentRecordId);
+
+  if (!document) {
+    throw new Error("Documento não encontrado.");
+  }
+
+  return document;
+}
+
+function toSignatureActionState(
+  request: Pick<
+    NonNullable<ReturnType<typeof getLatestDocumentSignatureRequest>>,
+    "provider_document_id" | "provider_envelope_id" | "sent_at" | "status"
+  > | null | undefined,
+) {
+  if (!request) {
+    return null;
+  }
+
+  return {
+    providerDocumentId: request.provider_document_id,
+    providerEnvelopeId: request.provider_envelope_id,
+    sentAt: request.sent_at,
+    status: request.status,
+  };
 }
 
 function resolveSigners(entityType: string, entityId: string): ClicksignSignerInput[] {

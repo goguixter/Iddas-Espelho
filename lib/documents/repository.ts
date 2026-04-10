@@ -46,8 +46,10 @@ const DOCUMENT_HISTORY_SELECT = `
     dr.created_at,
     dr.updated_at,
     dsr.status AS signature_status,
-    dsr.last_error AS signature_last_error,
-    dsr.raw_response_json AS signature_raw_response_json,
+      dsr.last_error AS signature_last_error,
+      dsr.provider_document_id AS signature_provider_document_id,
+      dsr.provider_envelope_id AS signature_provider_envelope_id,
+      dsr.raw_response_json AS signature_raw_response_json,
     dsr.signers_json AS signature_signers_json,
     dsr.sent_at AS signature_sent_at,
     dsr.signed_at AS signature_signed_at
@@ -107,6 +109,8 @@ export function listDocumentRecords(limit = 20) {
     .all(limit) as Array<
       DocumentRecord & {
         signature_last_error: string | null;
+        signature_provider_document_id: string | null;
+        signature_provider_envelope_id: string | null;
         signature_raw_response_json: string | null;
         signature_signers_json: string | null;
         signature_sent_at: string | null;
@@ -118,6 +122,8 @@ export function listDocumentRecords(limit = 20) {
   return rows.map((row) => ({
     ...row,
     signatureLastError: row.signature_last_error,
+    signatureProviderDocumentId: row.signature_provider_document_id,
+    signatureProviderEnvelopeId: row.signature_provider_envelope_id,
     signatureRawResponseJson: row.signature_raw_response_json,
     signatureSignersJson: row.signature_signers_json,
     signatureSentAt: row.signature_sent_at,

@@ -13,6 +13,7 @@ const EVENT_LABELS: Record<string, string> = {
   deadline: "Prazo atingido",
   document_created: "Contrato gerado",
   document_closed: "Documento concluído",
+  document_deleted: "Documento excluído",
   refusal: "Assinatura recusada",
   sign: "Documento assinado",
   signature_started: "Assinatura iniciada",
@@ -29,9 +30,11 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function DocumentSignatureTimelineModal({
+  compact = false,
   title = "Timeline",
   timeline,
 }: {
+  compact?: boolean;
   title?: string;
   timeline: DocumentSignatureTimelineItem[];
 }) {
@@ -42,10 +45,15 @@ export function DocumentSignatureTimelineModal({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+        title="Ver timeline"
+        className={
+          compact
+            ? "inline-flex h-10 w-10 items-center justify-center rounded-2xl text-[var(--color-ink)] transition hover:text-[var(--color-accent)]"
+            : "inline-flex items-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+        }
       >
         <Clock3 className="h-4 w-4" />
-        Ver timeline
+        {compact ? <span className="sr-only">Ver timeline</span> : "Ver timeline"}
       </button>
 
       {open ? (

@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, ExternalLink, Printer } from "lucide-react";
+import {
+  canCancelDocumentSignature,
+  canDeleteDraftDocumentSignature,
+  canSendDocumentToClicksign,
+} from "@/lib/clicksign/actions";
 import { DocumentSignatureStatusBadge } from "@/components/document-signature-status-badge";
 import { DocumentSignatureActions } from "@/components/document-signature-actions";
 import { DocumentSignatureTimelineModal } from "@/components/document-signature-timeline-modal";
-import { buildDocumentSignatureSummary } from "@/lib/clicksign/presentation";
+import { buildDocumentSignatureViewModel } from "@/lib/clicksign/presentation";
+import { getDocumentEntityLabel } from "@/lib/documents/presentation";
 import {
   getDocumentRecord,
   getLatestDocumentSignatureRequest,
@@ -18,17 +24,25 @@ export default async function DocumentoDetailPage({
   const { id } = await params;
   const record = getDocumentRecord(Number(id));
   const signatureRequest = record ? getLatestDocumentSignatureRequest(record.id) : null;
-  const signatureSummary = buildDocumentSignatureSummary(
-    record?.created_at,
-    signatureRequest?.signers_json,
-    signatureRequest?.raw_response_json,
-    signatureRequest?.status,
-  );
-  const signedNames = signatureSummary.signers.filter((item) => item.signed).map((item) => item.name);
 
   if (!record) {
     notFound();
   }
+
+  const signatureView = buildDocumentSignatureViewModel({
+    documentCreatedAt: record.created_at,
+    request: signatureRequest
+      ? {
+          lastError: signatureRequest.last_error,
+          providerDocumentId: signatureRequest.provider_document_id,
+          providerEnvelopeId: signatureRequest.provider_envelope_id,
+          rawResponseJson: signatureRequest.raw_response_json,
+          sentAt: signatureRequest.sent_at,
+          signersJson: signatureRequest.signers_json,
+          status: signatureRequest.status,
+        }
+      : null,
+  });
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -50,23 +64,25 @@ export default async function DocumentoDetailPage({
           {record.title}
         </h1>
         <p className="mt-2 text-sm text-[var(--color-muted)]">
-          Template {record.template_key} v{record.template_version} • Orçamento{" "}
-          {record.entity_id}
+          Template {record.template_key} v{record.template_version} • {getDocumentEntityLabel(record)}
         </p>
         <p className="mt-3 text-sm text-[var(--color-muted)]">
-          {signedNames.length > 0
-            ? `Assinaram: ${signedNames.join(", ")}`
+          {signatureView.signedNames.length > 0
+            ? `Assinaram: ${signatureView.signedNames.join(", ")}`
             : "Nenhuma assinatura concluída até o momento."}
         </p>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <DocumentSignatureActions
+            canCancel={canCancelDocumentSignature(signatureView.actionState)}
+            canDeleteDocument={canDeleteDraftDocumentSignature(signatureView.actionState)}
+            canSend={canSendDocumentToClicksign(signatureView.actionState)}
             documentId={record.id}
-            initialError={signatureRequest?.last_error ?? null}
+            initialError={signatureView.error}
           />
           <DocumentSignatureTimelineModal
             title={`Timeline de ${record.title}`}
-            timeline={signatureSummary.timeline}
+            timeline={signatureView.summary.timeline}
           />
           <Link
             href={`/api/documentos/${record.id}/html`}
@@ -87,7 +103,7 @@ export default async function DocumentoDetailPage({
           <div className="min-w-0 flex-1" />
           <DocumentSignatureStatusBadge
             label="Status do documento"
-            status={signatureSummary.status}
+            status={signatureView.summary.status}
           />
         </div>
       </header>

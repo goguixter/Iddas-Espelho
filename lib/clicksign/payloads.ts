@@ -112,6 +112,21 @@ export function buildEnvelopeStatusPayload(envelopeId: string) {
   };
 }
 
+export function buildDocumentStatusPayload(
+  documentId: string,
+  status: "canceled",
+) {
+  return {
+    data: {
+      type: "documents",
+      attributes: {
+        status,
+      },
+      id: documentId,
+    },
+  };
+}
+
 export function buildNotificationPayload() {
   return {
     data: {

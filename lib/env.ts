@@ -29,8 +29,7 @@ const iddasEnvSchema = z.object({
 });
 
 const envSchema = clicksignEnvSchema.merge(iddasEnvSchema);
-
-export const env = envSchema.parse({
+const rawEnv = {
   CLICKSIGN_PROFILE: process.env.CLICKSIGN_PROFILE,
   CLICKSIGN_API_KEY: process.env.CLICKSIGN_API_KEY,
   CLICKSIGN_BASE_URL: process.env.CLICKSIGN_BASE_URL,
@@ -53,30 +52,20 @@ export const env = envSchema.parse({
   IDDAS_SYNC_ORCAMENTOS_PER_PAGE: process.env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE,
   IDDAS_SYNC_PESSOAS_PER_PAGE: process.env.IDDAS_SYNC_PESSOAS_PER_PAGE,
   IDDAS_SYNC_VENDAS_PER_PAGE: process.env.IDDAS_SYNC_VENDAS_PER_PAGE,
-});
+};
+
+export const env = envSchema.parse(rawEnv);
 
 export const clicksignConfig = resolveClicksignConfig();
 export const iddasConfig = resolveIddasConfig();
 
 function resolveClicksignConfig() {
   const profile = env.CLICKSIGN_PROFILE;
-
-  if (profile === "production") {
-    return {
-      apiKey: env.CLICKSIGN_PRODUCTION_API_KEY ?? env.CLICKSIGN_API_KEY ?? null,
-      baseUrl: env.CLICKSIGN_PRODUCTION_BASE_URL ?? env.CLICKSIGN_BASE_URL,
-      profile,
-      webhookSecret:
-        env.CLICKSIGN_PRODUCTION_WEBHOOK_SECRET ?? env.CLICKSIGN_WEBHOOK_SECRET ?? null,
-    };
-  }
-
   return {
-    apiKey: env.CLICKSIGN_SANDBOX_API_KEY ?? env.CLICKSIGN_API_KEY ?? null,
-    baseUrl: env.CLICKSIGN_SANDBOX_BASE_URL ?? env.CLICKSIGN_BASE_URL,
+    apiKey: resolveClicksignProfileValue("API_KEY", profile),
+    baseUrl: resolveClicksignProfileValue("BASE_URL", profile) ?? "https://sandbox.clicksign.com",
     profile,
-    webhookSecret:
-      env.CLICKSIGN_SANDBOX_WEBHOOK_SECRET ?? env.CLICKSIGN_WEBHOOK_SECRET ?? null,
+    webhookSecret: resolveClicksignProfileValue("WEBHOOK_SECRET", profile),
   };
 }
 
@@ -91,4 +80,24 @@ function resolveIddasConfig() {
     syncVendasPerPage: env.IDDAS_SYNC_VENDAS_PER_PAGE,
     tokenEndpoint: env.IDDAS_TOKEN_ENDPOINT,
   };
+}
+
+function resolveClicksignProfileValue(
+  field: "API_KEY" | "BASE_URL" | "WEBHOOK_SECRET",
+  profile: "sandbox" | "production",
+) {
+  const profilePrefix = profile === "production" ? "CLICKSIGN_PRODUCTION_" : "CLICKSIGN_SANDBOX_";
+  const profileKey = `${profilePrefix}${field}` as
+    | "CLICKSIGN_PRODUCTION_API_KEY"
+    | "CLICKSIGN_PRODUCTION_BASE_URL"
+    | "CLICKSIGN_PRODUCTION_WEBHOOK_SECRET"
+    | "CLICKSIGN_SANDBOX_API_KEY"
+    | "CLICKSIGN_SANDBOX_BASE_URL"
+    | "CLICKSIGN_SANDBOX_WEBHOOK_SECRET";
+  const legacyKey = `CLICKSIGN_${field}` as
+    | "CLICKSIGN_API_KEY"
+    | "CLICKSIGN_BASE_URL"
+    | "CLICKSIGN_WEBHOOK_SECRET";
+
+  return env[profileKey] ?? env[legacyKey] ?? null;
 }

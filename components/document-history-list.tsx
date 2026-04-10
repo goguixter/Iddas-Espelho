@@ -4,10 +4,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { useState } from "react";
+import {
+  canCancelDocumentSignature,
+  canDeleteDraftDocumentSignature,
+  canSendDocumentToClicksign,
+} from "@/lib/clicksign/actions";
 import { DocumentSignatureStatusBadge } from "@/components/document-signature-status-badge";
+import { DocumentSignatureActions } from "@/components/document-signature-actions";
 import { DocumentSignatureTimelineModal } from "@/components/document-signature-timeline-modal";
-import { buildDocumentSignatureSummary } from "@/lib/clicksign/presentation";
+import { buildDocumentSignatureViewModel } from "@/lib/clicksign/presentation";
 import { formatDateShort } from "@/lib/documents/formatters";
+import { getDocumentEntityLabel } from "@/lib/documents/presentation";
 import type { DocumentHistoryRecord } from "@/lib/documents/types";
 
 export function DocumentHistoryList({ documents }: { documents: DocumentHistoryRecord[] }) {
@@ -43,77 +50,12 @@ export function DocumentHistoryList({ documents }: { documents: DocumentHistoryR
   return (
     <div className="space-y-3">
       {documents.map((document) => (
-        (() => {
-          const summary = buildDocumentSignatureSummary(
-            document.created_at,
-            document.signatureSignersJson,
-            document.signatureRawResponseJson,
-            document.signatureStatus,
-          );
-          const signedNames = summary.signers.filter((item) => item.signed).map((item) => item.name);
-
-          return (
-            <article
-              key={document.id}
-              className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4 transition hover:border-[var(--color-accent)]/35"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-faint)]">
-                      {document.template_key}
-                    </p>
-                  </div>
-                  <h3 className="mt-1 text-base font-semibold text-[var(--color-ink)]">
-                    {document.title}
-                  </h3>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <DocumentSignatureStatusBadge
-                      label="Status do documento"
-                      status={summary.status}
-                    />
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[var(--color-muted)]">
-                    <p>Orçamento {document.entity_id}</p>
-                    <p>Gerado em {formatDateShort(document.created_at)}</p>
-                    {document.signatureSignedAt ? (
-                      <p>Assinado em {formatDateShort(document.signatureSignedAt)}</p>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 text-sm text-[var(--color-muted)]">
-                    {signedNames.length > 0 ? (
-                      <p>
-                        Assinaram: <span className="text-[var(--color-ink)]">{signedNames.join(", ")}</span>
-                      </p>
-                    ) : (
-                      <p>Nenhuma assinatura concluída até o momento.</p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 self-start">
-                  <DocumentSignatureTimelineModal
-                    title={`Timeline de ${document.title}`}
-                    timeline={summary.timeline}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setPendingDelete(document)}
-                    disabled={deletingId === document.id}
-                    className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl bg-rose-500/8 text-rose-200 transition hover:bg-rose-500/14 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Trash2 className="h-4.5 w-4.5" />
-                  </button>
-                  <Link
-                    href={`/documentos/${document.id}`}
-                    className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl bg-[var(--color-accent)]/8 text-[var(--color-accent)] transition hover:bg-[var(--color-accent)]/14 hover:text-[var(--color-accent)]"
-                  >
-                    <ExternalLink className="h-4.5 w-4.5" />
-                  </Link>
-                </div>
-              </div>
-            </article>
-          );
-        })()
+        <DocumentHistoryCard
+          key={document.id}
+          deleting={deletingId === document.id}
+          document={document}
+          onDeleteClick={setPendingDelete}
+        />
       ))}
 
       {pendingDelete ? (
@@ -150,5 +92,98 @@ export function DocumentHistoryList({ documents }: { documents: DocumentHistoryR
         </div>
       ) : null}
     </div>
+  );
+}
+
+function DocumentHistoryCard({
+  deleting,
+  document,
+  onDeleteClick,
+}: {
+  deleting: boolean;
+  document: DocumentHistoryRecord;
+  onDeleteClick: (document: DocumentHistoryRecord) => void;
+}) {
+  const { actionState, error, signedNames, summary } = buildDocumentSignatureViewModel({
+    documentCreatedAt: document.created_at,
+    request: {
+      lastError: document.signatureLastError,
+      providerDocumentId: document.signatureProviderDocumentId,
+      providerEnvelopeId: document.signatureProviderEnvelopeId,
+      rawResponseJson: document.signatureRawResponseJson,
+      sentAt: document.signatureSentAt,
+      signersJson: document.signatureSignersJson,
+      status: document.signatureStatus,
+    },
+  });
+
+  return (
+    <article className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4 transition hover:border-[var(--color-accent)]/35">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-faint)]">
+              {document.template_key}
+            </p>
+          </div>
+          <h3 className="mt-1 text-base font-semibold text-[var(--color-ink)]">
+            {document.title}
+          </h3>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <DocumentSignatureStatusBadge
+              label="Status do documento"
+              status={summary.status}
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[var(--color-muted)]">
+            <p>{getDocumentEntityLabel(document)}</p>
+            <p>Gerado em {formatDateShort(document.created_at)}</p>
+            {document.signatureSignedAt ? (
+              <p>Assinado em {formatDateShort(document.signatureSignedAt)}</p>
+            ) : null}
+          </div>
+          <div className="mt-3 text-sm text-[var(--color-muted)]">
+            {signedNames.length > 0 ? (
+              <p>
+                Assinaram: <span className="text-[var(--color-ink)]">{signedNames.join(", ")}</span>
+              </p>
+            ) : (
+              <p>Nenhuma assinatura concluída até o momento.</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 self-start">
+          <DocumentSignatureTimelineModal
+            compact
+            title={`Timeline de ${document.title}`}
+            timeline={summary.timeline}
+          />
+          <DocumentSignatureActions
+            canCancel={canCancelDocumentSignature(actionState)}
+            canDeleteDocument={canDeleteDraftDocumentSignature(actionState)}
+            canSend={canSendDocumentToClicksign(actionState)}
+            compact
+            documentId={document.id}
+            initialError={error}
+          />
+          <button
+            type="button"
+            onClick={() => onDeleteClick(document)}
+            disabled={deleting}
+            title="Excluir documento"
+            className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl text-rose-200 transition hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Trash2 className="h-4.5 w-4.5" />
+          </button>
+          <Link
+            href={`/documentos/${document.id}`}
+            title="Abrir documento"
+            className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl text-[var(--color-accent)] transition hover:text-[var(--color-accent)]/80"
+          >
+            <ExternalLink className="h-4.5 w-4.5" />
+          </Link>
+        </div>
+      </div>
+    </article>
   );
 }
