@@ -16,7 +16,7 @@ import {
 } from "@/lib/clicksign/payloads";
 import { mergeClicksignRawState } from "@/lib/clicksign/state";
 import type { ClicksignSignerInput } from "@/lib/clicksign/types";
-import { clicksignConfig, env } from "@/lib/env";
+import { env } from "@/lib/env";
 import { normalizeDocumentNumber } from "@/lib/documents/formatters";
 import { renderDocumentPdf } from "@/lib/documents/pdf";
 import {
@@ -89,7 +89,6 @@ export async function sendDocumentToClicksign(documentRecordId: number) {
 
     await activateEnvelope(document.id, envelopeId);
     await notifyEnvelope(document.id, envelopeId);
-
     persistRequestState(requestId, {
       documentId: clicksignDocumentId,
       envelopeId,
@@ -322,7 +321,6 @@ async function notifyEnvelope(documentId: number, envelopeId: string) {
   logSync("info", "document.clicksign.notification-payload", {
     documentId,
     notificationAttributes: notificationPayload.data.attributes,
-    profile: clicksignConfig.profile,
   });
 
   await runClicksignStep(

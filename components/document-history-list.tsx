@@ -6,21 +6,29 @@ import { ExternalLink, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
   canCancelDocumentSignature,
+  canDeleteDocumentRecord,
   canDeleteDraftDocumentSignature,
   canSendDocumentToClicksign,
 } from "@/lib/clicksign/actions";
 import { DocumentSignatureStatusBadge } from "@/components/document-signature-status-badge";
 import { DocumentSignatureActions } from "@/components/document-signature-actions";
 import { DocumentSignatureTimelineModal } from "@/components/document-signature-timeline-modal";
-import { buildDocumentSignatureViewModel } from "@/lib/clicksign/presentation";
+import {
+  buildDocumentSignatureViewModel,
+  resolveDocumentHistoryBucket,
+} from "@/lib/clicksign/presentation";
 import { formatDateShort } from "@/lib/documents/formatters";
 import { getDocumentEntityLabel } from "@/lib/documents/presentation";
 import type { DocumentHistoryRecord } from "@/lib/documents/types";
+
+const HISTORY_TABS = ["aguardando", "enviados", "iniciados", "finalizados", "cancelados"] as const;
+type HistoryTab = (typeof HISTORY_TABS)[number];
 
 export function DocumentHistoryList({ documents }: { documents: DocumentHistoryRecord[] }) {
   const router = useRouter();
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DocumentHistoryRecord | null>(null);
+  const [activeTab, setActiveTab] = useState<HistoryTab>("aguardando");
 
   async function handleDelete(id: number) {
     setDeletingId(id);
@@ -47,16 +55,59 @@ export function DocumentHistoryList({ documents }: { documents: DocumentHistoryR
     );
   }
 
+  const items = documents.map((document) => {
+    const view = buildDocumentSignatureViewModel({
+      documentCreatedAt: document.created_at,
+      request: {
+        lastError: document.signatureLastError,
+        providerDocumentId: document.signatureProviderDocumentId,
+        providerEnvelopeId: document.signatureProviderEnvelopeId,
+        rawResponseJson: document.signatureRawResponseJson,
+        sentAt: document.signatureSentAt,
+        signersJson: document.signatureSignersJson,
+        status: document.signatureStatus,
+      },
+    });
+
+    return {
+      bucket: resolveDocumentHistoryBucket({ summary: view.summary }),
+      document,
+      view,
+    };
+  });
+
+  const filteredItems = items.filter((item) => item.bucket === activeTab);
+
   return (
-    <div className="space-y-3">
-      {documents.map((document) => (
+    <div className="space-y-4">
+      <div className="inline-flex flex-wrap rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-1">
+        {HISTORY_TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={`cursor-pointer rounded-xl px-4 py-2 text-sm transition ${
+              activeTab === tab
+                ? "bg-[var(--color-accent)] font-semibold text-slate-950"
+                : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+            }`}
+          >
+            {HISTORY_TAB_LABELS[tab]}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+      {filteredItems.map(({ document, view }) => (
         <DocumentHistoryCard
           key={document.id}
           deleting={deletingId === document.id}
           document={document}
           onDeleteClick={setPendingDelete}
+          view={view}
         />
       ))}
+      </div>
 
       {pendingDelete ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm">
@@ -99,23 +150,15 @@ function DocumentHistoryCard({
   deleting,
   document,
   onDeleteClick,
+  view,
 }: {
   deleting: boolean;
   document: DocumentHistoryRecord;
   onDeleteClick: (document: DocumentHistoryRecord) => void;
+  view: ReturnType<typeof buildDocumentSignatureViewModel>;
 }) {
-  const { actionState, error, signedNames, summary } = buildDocumentSignatureViewModel({
-    documentCreatedAt: document.created_at,
-    request: {
-      lastError: document.signatureLastError,
-      providerDocumentId: document.signatureProviderDocumentId,
-      providerEnvelopeId: document.signatureProviderEnvelopeId,
-      rawResponseJson: document.signatureRawResponseJson,
-      sentAt: document.signatureSentAt,
-      signersJson: document.signatureSignersJson,
-      status: document.signatureStatus,
-    },
-  });
+  const { actionState, error, signedNames, summary } = view;
+  const canDeleteRecord = canDeleteDocumentRecord(actionState);
 
   return (
     <article className="rounded-[24px] border border-[var(--color-line)] bg-[var(--color-panel)] p-4 transition hover:border-[var(--color-accent)]/35">
@@ -162,19 +205,22 @@ function DocumentHistoryCard({
             canCancel={canCancelDocumentSignature(actionState)}
             canDeleteDocument={canDeleteDraftDocumentSignature(actionState)}
             canSend={canSendDocumentToClicksign(actionState)}
+            canSync={Boolean(actionState?.providerEnvelopeId && actionState?.providerDocumentId)}
             compact
             documentId={document.id}
             initialError={error}
           />
-          <button
-            type="button"
-            onClick={() => onDeleteClick(document)}
-            disabled={deleting}
-            title="Excluir documento"
-            className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl text-rose-200 transition hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Trash2 className="h-4.5 w-4.5" />
-          </button>
+          {canDeleteRecord ? (
+            <button
+              type="button"
+              onClick={() => onDeleteClick(document)}
+              disabled={deleting}
+              title="Excluir documento"
+              className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl text-rose-200 transition hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Trash2 className="h-4.5 w-4.5" />
+            </button>
+          ) : null}
           <Link
             href={`/documentos/${document.id}`}
             title="Abrir documento"
@@ -187,3 +233,11 @@ function DocumentHistoryCard({
     </article>
   );
 }
+
+const HISTORY_TAB_LABELS: Record<HistoryTab, string> = {
+  aguardando: "Aguardando",
+  enviados: "Enviados",
+  iniciados: "Iniciados",
+  finalizados: "Finalizados",
+  cancelados: "Cancelados",
+};

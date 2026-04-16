@@ -77,6 +77,10 @@ export default async function DocumentoDetailPage({
             canCancel={canCancelDocumentSignature(signatureView.actionState)}
             canDeleteDocument={canDeleteDraftDocumentSignature(signatureView.actionState)}
             canSend={canSendDocumentToClicksign(signatureView.actionState)}
+            canSync={Boolean(
+              signatureView.actionState?.providerEnvelopeId &&
+              signatureView.actionState?.providerDocumentId,
+            )}
             documentId={record.id}
             initialError={signatureView.error}
           />

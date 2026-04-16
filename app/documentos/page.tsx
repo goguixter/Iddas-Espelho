@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { FileText } from "lucide-react";
 import { DocumentGenerator } from "@/components/document-generator";
 import { DocumentHistoryList } from "@/components/document-history-list";
 import { DocumentTemplateManager } from "@/components/document-template-manager";
@@ -72,7 +71,7 @@ export default async function DocumentosPage({
         </TabLink>
       </div>
 
-      <div className="table-scroll min-h-0 flex-1 overflow-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-hidden pr-1">
         {activeTab === "template" ? (
           <DocumentTemplateManager
             initialPreviewHtml={preview.html}
@@ -90,20 +89,8 @@ export default async function DocumentosPage({
             recentPessoas={recentPessoas}
           />
         ) : (
-          <section className="flex min-h-full flex-col rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--color-accent)]">
-                  Histórico
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--color-ink)]">
-                  Documentos gerados
-                </h2>
-              </div>
-              <FileText className="h-5 w-5 text-[var(--color-accent)]" />
-            </div>
-
-            <div className="table-scroll mt-5 min-h-0 flex-1 overflow-auto pr-1">
+          <section className="flex h-full min-h-0 flex-col rounded-[28px] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
+            <div className="table-scroll min-h-0 flex-1 overflow-auto pr-1">
               <DocumentHistoryList documents={documents} />
             </div>
           </section>
@@ -125,7 +112,7 @@ function TabLink({
   return (
     <Link
       href={href}
-      className={`rounded-xl px-4 py-2 text-sm transition ${
+      className={`cursor-pointer rounded-xl px-4 py-2 text-sm transition ${
         active
           ? "bg-[var(--color-accent)] font-semibold text-slate-950"
           : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"

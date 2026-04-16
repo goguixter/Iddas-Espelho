@@ -57,6 +57,36 @@ export function buildDocumentSignatureViewModel(input: {
   };
 }
 
+export function resolveDocumentHistoryBucket(input: {
+  summary: ReturnType<typeof buildDocumentSignatureSummary>;
+}) {
+  const eventNames = new Set(input.summary.timeline.map((item) => item.eventName));
+  const status = (input.summary.status ?? "").trim().toLowerCase();
+
+  if (status === "canceled" || status === "refused" || eventNames.has("cancel")) {
+    return "cancelados";
+  }
+
+  if (
+    status === "signed" ||
+    status === "closed" ||
+    eventNames.has("document_closed") ||
+    eventNames.has("auto_close")
+  ) {
+    return "finalizados";
+  }
+
+  if (eventNames.has("signature_started") || eventNames.has("sign") || status === "running") {
+    return "iniciados";
+  }
+
+  if (status === "sent" || eventNames.has("upload") || eventNames.has("add_signer")) {
+    return "enviados";
+  }
+
+  return "aguardando";
+}
+
 function buildSummaryFromInput(input: DocumentSignatureSummaryInput) {
   return deriveClicksignSignatureState({
     currentStatus: input.currentStatus,

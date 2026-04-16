@@ -119,11 +119,13 @@ export function mergeClicksignRawState(
     lastWebhook?: Record<string, unknown> | null;
     send?: Record<string, unknown> | null;
     webhookEvent?: Record<string, unknown> | null;
+    webhookEvents?: Record<string, unknown>[] | null;
   },
 ) {
   const current = parseClicksignRawState(currentRawResponseJson);
   const nextWebhookEvents = dedupeObjects([
     ...(current.webhookEvents ?? []),
+    ...(patch.webhookEvents ?? []),
     ...(patch.webhookEvent ? [patch.webhookEvent] : []),
   ]);
 

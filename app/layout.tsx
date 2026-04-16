@@ -28,7 +28,7 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${manrope.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-[var(--color-page)] text-[var(--color-ink)]">
+      <body className="h-full overflow-hidden bg-[var(--color-page)] text-[var(--color-ink)]">
         <AppShell>{children}</AppShell>
       </body>
     </html>

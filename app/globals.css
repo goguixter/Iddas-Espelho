@@ -43,6 +43,12 @@ a {
   text-decoration: none;
 }
 
+button:not(:disabled),
+a[href],
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
 .table-scroll {
   scrollbar-color: var(--color-accent) var(--color-panel);
   scrollbar-width: thin;

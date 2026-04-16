@@ -19,10 +19,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         width={sidebarWidth}
       />
       <main
-        className="min-w-0 flex-1 transition-[padding] duration-200"
+        className="h-screen min-w-0 flex-1 overflow-hidden transition-[padding] duration-200"
         style={{ paddingLeft: `${sidebarWidth}px` }}
       >
-        <div className="flex h-full min-h-0 flex-col px-6 py-6">{children}</div>
+        <div className="flex h-full min-h-0 flex-col overflow-hidden px-6 py-6">{children}</div>
       </main>
     </div>
   );

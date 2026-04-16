@@ -48,8 +48,8 @@ export function DocumentSignatureTimelineModal({
         title="Ver timeline"
         className={
           compact
-            ? "inline-flex h-10 w-10 items-center justify-center rounded-2xl text-[var(--color-ink)] transition hover:text-[var(--color-accent)]"
-            : "inline-flex items-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            ? "inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl text-[var(--color-ink)] transition hover:text-[var(--color-accent)]"
+            : "inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
         }
       >
         <Clock3 className="h-4 w-4" />

@@ -45,6 +45,16 @@ export function canDeleteDraftDocumentSignature(input: DocumentSignatureActionSt
   );
 }
 
+export function canDeleteDocumentRecord(input: DocumentSignatureActionState) {
+  const status = normalizeStatus(input?.status);
+
+  if (status === "canceled") {
+    return true;
+  }
+
+  return !isDocumentSignatureLocked(input);
+}
+
 export function isDocumentSignatureLocked(input: DocumentSignatureActionState) {
   if (!input) {
     return false;

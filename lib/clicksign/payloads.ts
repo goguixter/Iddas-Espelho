@@ -112,6 +112,19 @@ export function buildEnvelopeStatusPayload(envelopeId: string) {
   };
 }
 
+export function buildNotificationPayload() {
+  return {
+    data: {
+      type: "notifications",
+      attributes: {
+        email_customization: {
+          align: "center",
+        },
+      },
+    },
+  };
+}
+
 export function buildDocumentStatusPayload(
   documentId: string,
   status: "canceled",
@@ -123,31 +136,6 @@ export function buildDocumentStatusPayload(
         status,
       },
       id: documentId,
-    },
-  };
-}
-
-export function buildNotificationPayload() {
-  return {
-    data: {
-      type: "notifications",
-      attributes: {
-        message: "Seu contrato de viagem está disponível para assinatura digital.",
-        email_customization: {
-          subject: "Seu contrato de viagem está pronto para assinatura ✈️",
-          head: "Finalize sua viagem com segurança",
-          greeting: "Olá, tudo bem? 😊",
-          principal:
-            "Seu contrato já está disponível para assinatura, com todas as condições da sua viagem devidamente formalizadas. Para dar continuidade ao seu atendimento e garantir sua reserva, basta realizar a assinatura digital no link abaixo. O processo é rápido, seguro e pode ser feito diretamente pelo celular ou computador.",
-          button: "Assinar contrato agora",
-          final:
-            "Após a assinatura, nossa equipe seguirá com todo o acompanhamento da sua viagem, garantindo uma experiência tranquila do início ao embarque. Se precisar de qualquer suporte, estamos à disposição 🤝✈️",
-          align: "center",
-          show_token: false,
-          show_qrcode: false,
-          show_details: true,
-        },
-      },
     },
   };
 }
