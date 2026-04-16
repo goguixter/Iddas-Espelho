@@ -79,27 +79,8 @@ export function createDocumentPayload(
   };
 }
 
-export function hasCompleteAddress(form: DocumentGeneratorFormState) {
-  return [
-    form.logradouro,
-    form.numero,
-    form.bairro,
-    form.cep,
-    form.cidade,
-    form.estado,
-  ].every((value) => value.trim());
-}
-
 export function canGeneratePreview(form: DocumentGeneratorFormState) {
-  if (!hasCompleteAddress(form)) {
-    return false;
-  }
-
-  if (form.mode === "orcamento") {
-    return Boolean(form.orcamentoId.trim());
-  }
-
-  return Boolean(form.pessoaContratanteId.trim());
+  return getPreviewBlockers(form).length === 0;
 }
 
 export function applyOrcamentoAutofill(
@@ -161,6 +142,56 @@ export function toShortPersonName(value: string | null | undefined) {
 
 function extractString(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+export function getPreviewBlockers(form: DocumentGeneratorFormState) {
+  const blockers: string[] = [];
+
+  if (form.mode === "orcamento") {
+    if (!form.orcamentoId.trim()) {
+      blockers.push("Selecione um orçamento.");
+    }
+  } else if (!form.pessoaContratanteId.trim()) {
+    blockers.push("Selecione um contratante.");
+  }
+
+  if (!form.logradouro.trim()) {
+    blockers.push("Logradouro não preenchido.");
+  }
+
+  if (!form.numero.trim()) {
+    blockers.push("Número não preenchido.");
+  }
+
+  if (!form.bairro.trim()) {
+    blockers.push("Bairro não preenchido.");
+  }
+
+  if (!form.cep.trim()) {
+    blockers.push("CEP não preenchido.");
+  }
+
+  if (!form.cidade.trim()) {
+    blockers.push("Cidade não preenchida.");
+  }
+
+  if (!form.estado.trim()) {
+    blockers.push("UF não preenchida.");
+  }
+
+  return blockers;
+}
+
+export function getPreviewBlockedMessage(form: DocumentGeneratorFormState) {
+  const blockers = getPreviewBlockers(form);
+  const hasContext =
+    form.mode === "orcamento"
+      ? Boolean(form.orcamentoId.trim())
+      : Boolean(form.pessoaContratanteId.trim());
+
+  return hasContext && blockers.length > 0
+    ? `Prévia pendente. ${blockers.join(" ")}`
+    : "";
 }
 
 function extractOrcamentoLocalizador(raw: Record<string, unknown> | null | undefined) {

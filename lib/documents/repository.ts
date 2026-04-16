@@ -490,9 +490,12 @@ export function searchOrcamentoDocumentOptions(query: string, limit = 12) {
           vw.situacao_cor
         FROM orcamentos_projection vw
         WHERE
-          vw.id LIKE ?
-          OR COALESCE(vw.identificador, '') LIKE ?
-          OR COALESCE(vw.cliente_nome_db, vw.solicitacao_nome, '') LIKE ?
+          LOWER(TRIM(COALESCE(vw.situacao_nome, ''))) = 'aprovado'
+          AND (
+            vw.id LIKE ?
+            OR COALESCE(vw.identificador, '') LIKE ?
+            OR COALESCE(vw.cliente_nome_db, vw.solicitacao_nome, '') LIKE ?
+          )
         ORDER BY datetime(vw.updated_at) DESC, vw.id DESC
         LIMIT ?
       `,
@@ -625,6 +628,17 @@ export function getOrcamentoDocumentSource(
           p.cidade AS pessoa_cidade,
           p.estado AS pessoa_estado,
           p.cep AS pessoa_cep,
+          (
+            SELECT group_concat(company_name, ' | ')
+            FROM (
+              SELECT DISTINCT COALESCE(inner_comp.companhia, inner_comp.nome, inner_v.companhia_nome) AS company_name
+              FROM voos inner_v
+              LEFT JOIN companhias inner_comp ON inner_comp.id = inner_v.companhia_id
+              WHERE inner_v.orcamento_id = o.id
+                AND NULLIF(COALESCE(inner_comp.companhia, inner_comp.nome, inner_v.companhia_nome), '') IS NOT NULL
+              ORDER BY COALESCE(inner_comp.companhia, inner_comp.nome, inner_v.companhia_nome) ASC
+            )
+          ) AS voo_fornecedores,
           COALESCE(comp.companhia, comp.nome, first_voo.companhia_nome) AS voo_fornecedor,
           first_voo.localizador AS voo_localizador,
           sl.nome AS solicitacao_nome,
@@ -692,6 +706,7 @@ export function getOrcamentoDocumentSource(
         pessoa_email: string | null;
         pessoa_nome: string | null;
         voo_fornecedor: string | null;
+        voo_fornecedores: string | null;
         voo_localizador: string | null;
         raw_json: string;
         data_solicitacao: string | null;
@@ -729,6 +744,7 @@ export function getOrcamentoDocumentSource(
     solicitacaoNome: row.solicitacao_nome,
     solicitacaoTelefone: row.solicitacao_telefone,
     vooFornecedor: row.voo_fornecedor,
+    vooFornecedores: parseGroupedValues(row.voo_fornecedores),
     vooLocalizador: row.voo_localizador,
   };
 }
@@ -818,4 +834,11 @@ function parseNullableRawJson(value: string | null) {
   }
 
   return null;
+}
+
+function parseGroupedValues(value: string | null) {
+  return (value ?? "")
+    .split(" | ")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }

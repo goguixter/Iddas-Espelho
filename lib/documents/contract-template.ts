@@ -47,6 +47,7 @@ type ContractDocumentPayload = {
   reserva: {
     condicoesTarifarias: string;
     fornecedor: string;
+    fornecedorLabel: string;
     localizador: string;
     servicoContratado: string;
   };
@@ -180,9 +181,14 @@ function buildPayload(
     pickString(raw, "termos_condicoes"),
     "Conforme regras tarifárias informadas no orçamento espelhado.",
   );
+  const flightSuppliers = uniqStrings([
+    ...source.vooFornecedores,
+    ...extractFlightSuppliers(raw),
+  ]);
   const supplier =
     firstNonEmpty(
       input.fornecedor,
+      joinSupplierNames(flightSuppliers),
       source.vooFornecedor,
       pickNestedString(raw, ["voos", "0", "companhia"]),
       pickNestedString(raw, ["voos", "0", "cia"]),
@@ -212,6 +218,7 @@ function buildPayload(
       condicoesTarifarias:
         condicoesTarifarias ?? "Conforme regras do fornecedor informado no orçamento.",
       fornecedor: supplier,
+      fornecedorLabel: flightSuppliers.length > 1 ? "Fornecedores" : "Fornecedor",
       localizador,
       servicoContratado:
         firstNonEmpty(input.servicoContratado) ??
@@ -275,6 +282,7 @@ function buildPayloadFromManual(
         firstNonEmpty(input.condicoesTarifarias) ??
         "Conforme regras tarifárias informadas ao contratante.",
       fornecedor: firstNonEmpty(input.fornecedor) ?? "Não informado",
+      fornecedorLabel: inferSupplierLabel(firstNonEmpty(input.fornecedor) ?? null),
       localizador: firstNonEmpty(input.localizadorReserva) ?? "Não informado",
       servicoContratado:
         firstNonEmpty(input.servicoContratado) ??
@@ -530,7 +538,7 @@ function renderContractHtml(payload: ContractDocumentPayload, title: string) {
     <p class="service-box">
       <strong>Localizador da reserva:</strong> <span class="var">${escapeHtml(payload.reserva.localizador)}</span><br />
       <strong>Serviço contratado:</strong> <span class="var">${escapeHtml(payload.reserva.servicoContratado)}</span><br />
-      <strong>Fornecedor:</strong> <span class="var">${escapeHtml(payload.reserva.fornecedor)}</span><br />
+      <strong>${escapeHtml(payload.reserva.fornecedorLabel)}:</strong> <span class="var">${escapeHtml(payload.reserva.fornecedor)}</span><br />
       <strong>Condições tarifárias:</strong> <span class="var">${escapeHtml(payload.reserva.condicoesTarifarias)}</span>
     </p>
 
@@ -651,6 +659,26 @@ function pickString(
   return readValue(object[key]);
 }
 
+function extractFlightSuppliers(raw: Record<string, unknown> | null) {
+  const flights = Array.isArray(raw?.voos) ? raw.voos : [];
+
+  return uniqStrings(
+    flights.flatMap((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return [];
+      }
+
+      const flight = entry as Record<string, unknown>;
+      return [
+        readValue(flight.companhia),
+        readValue(flight.companhia_nome),
+        readValue(flight.cia),
+        readValue(flight.fornecedor),
+      ];
+    }),
+  );
+}
+
 function pickNestedString(
   object: Record<string, unknown> | null,
   path: string[],
@@ -682,9 +710,25 @@ function firstNonEmpty(...values: Array<string | null | undefined>) {
   return values.find((value) => typeof value === "string" && value.trim()) ?? null;
 }
 
+function joinSupplierNames(values: string[]) {
+  return values.length > 0 ? values.join(", ") : null;
+}
+
 function inferDocumentLabel(documentNumber: string) {
   const digits = documentNumber.replace(/\D/g, "");
   return digits.length === 11 ? "CPF" : "Passaporte";
+}
+
+function inferSupplierLabel(value: string | null) {
+  if (!value) {
+    return "Fornecedor";
+  }
+
+  return value.includes(",") ? "Fornecedores" : "Fornecedor";
+}
+
+function uniqStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
 function escapeHtml(value: string) {

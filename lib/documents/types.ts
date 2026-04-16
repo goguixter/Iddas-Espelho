@@ -88,6 +88,7 @@ export type OrcamentoDocumentSource = {
   solicitacaoNome: string | null;
   solicitacaoTelefone: string | null;
   vooFornecedor: string | null;
+  vooFornecedores: string[];
   vooLocalizador: string | null;
 };
 

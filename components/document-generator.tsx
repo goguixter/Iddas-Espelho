@@ -23,6 +23,7 @@ import {
   createEmptyOrcamentoFormState,
   createInitialFormState,
   EMPTY_AUTOFILL_FIELDS,
+  getPreviewBlockedMessage,
   toShortPersonName,
   type DocumentGeneratorFormState as FormState,
   type DocumentGeneratorMode,
@@ -463,6 +464,7 @@ export function DocumentGenerator({
   const [form, setForm] = useState<FormState>(() => createInitialFormState(forcedMode, initialOrcamentoId));
   const selectedContratante =
     selectedPassengerPeople.find((item) => item.id === form.pessoaContratanteId) ?? null;
+  const previewBlockedMessage = getPreviewBlockedMessage(form);
 
   useEffect(() => {
     if (!forcedMode) {
@@ -817,6 +819,12 @@ export function DocumentGenerator({
                   </div>
                 ) : null}
 
+                {previewBlockedMessage ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                    {previewBlockedMessage}
+                  </div>
+                ) : null}
+
                 <div className="grid grid-cols-[7fr_3fr] gap-3 pt-1">
                   <button
                     type="submit"
@@ -943,6 +951,12 @@ export function DocumentGenerator({
                   </div>
                 ) : null}
 
+                {previewBlockedMessage ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                    {previewBlockedMessage}
+                  </div>
+                ) : null}
+
                 <div className="mt-auto grid grid-cols-[7fr_3fr] gap-3 pt-1">
                   <button
                     type="submit"
@@ -970,9 +984,10 @@ export function DocumentGenerator({
 
           <PreviewPanel
             emptyMessage={
-              form.mode === "orcamento"
+              previewBlockedMessage ||
+              (form.mode === "orcamento"
                 ? "Selecione um orçamento para gerar a prévia automática do contrato."
-                : "Selecione o contratante e preencha os dados do serviço para gerar a prévia do contrato."
+                : "Selecione o contratante e preencha os dados do serviço para gerar a prévia do contrato.")
             }
             html={previewHtml}
             loading={loadingPreview}
