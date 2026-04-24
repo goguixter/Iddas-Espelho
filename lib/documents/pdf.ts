@@ -1,5 +1,10 @@
 import { chromium } from "playwright";
 
+const CONTAINER_ARGS = [
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+];
+
 export async function renderDocumentPdf(html: string) {
   const browser = await launchBrowser();
 
@@ -22,21 +27,33 @@ async function launchBrowser() {
   const errors: string[] = [];
 
   try {
-    return await chromium.launch({ channel: "chrome", headless: true });
+    return await chromium.launch({
+      args: CONTAINER_ARGS,
+      executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH,
+      headless: true,
+    });
+  } catch (error) {
+    errors.push(formatLaunchError("playwright-chromium", error));
+  }
+
+  try {
+    return await chromium.launch({
+      args: CONTAINER_ARGS,
+      channel: "chrome",
+      headless: true,
+    });
   } catch (error) {
     errors.push(formatLaunchError("chrome", error));
   }
 
   try {
-    return await chromium.launch({ channel: "msedge", headless: true });
+    return await chromium.launch({
+      args: CONTAINER_ARGS,
+      channel: "msedge",
+      headless: true,
+    });
   } catch (error) {
     errors.push(formatLaunchError("msedge", error));
-  }
-
-  try {
-    return await chromium.launch({ headless: true });
-  } catch (error) {
-    errors.push(formatLaunchError("playwright-chromium", error));
   }
 
   throw new Error(

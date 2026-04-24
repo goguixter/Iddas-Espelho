@@ -1,0 +1,15 @@
+.git
+.github
+.next
+.npm-cache
+node_modules
+data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env
+.env.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store

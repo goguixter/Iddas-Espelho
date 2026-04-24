@@ -15,6 +15,7 @@ Fluxos principais:
 - React 19
 - Tailwind CSS 4
 - SQLite local com `better-sqlite3`
+- Playwright para renderização de PDF
 
 ## Configuração
 
@@ -55,6 +56,12 @@ npm run dev
 
 Abra `http://localhost:3000`.
 
+Para gerar PDFs localmente, instale o Chromium do Playwright:
+
+```bash
+npx playwright install chromium
+```
+
 Com autenticação configurada, o acesso ao painel e às rotas `/api/*` exige login em `/login`.
 As exceções públicas continuam sendo:
 
@@ -88,6 +95,24 @@ sqlite3 data/iddas-mirror.sqlite ".backup './iddas-mirror.backup.sqlite'"
 2. acesse `/admin/importar-base`
 3. envie o arquivo `iddas-mirror.backup.sqlite`
 4. reinicie o serviço no Railway para o sistema promover a base importada no boot
+
+## Deploy no Railway
+
+O projeto agora inclui um `Dockerfile` para tornar o ambiente de produção reproduzível no Railway.
+Esse container:
+
+- instala dependências Node com `npm ci`
+- instala o Chromium e as dependências nativas do Playwright
+- faz o build do Next.js
+- sobe a aplicação em `0.0.0.0:3000`
+
+Configuração recomendada no Railway:
+
+- usar o `Dockerfile` da raiz do projeto
+- limpar overrides antigos de Build Command e Start Command, deixando o Railway usar o `Dockerfile`
+- manter o volume persistente montado em `/app/data`
+- healthcheck em `/login`
+- não definir `PLAYWRIGHT_BROWSERS_PATH`; o container já fixa `/ms-playwright`
 
 Para validar webhooks localmente com Clicksign, exponha a aplicação com `ngrok`:
 
