@@ -43,6 +43,9 @@ Variáveis:
 - `IDDAS_SYNC_ORCAMENTOS_PER_PAGE`: paginação de orçamentos
 - `IDDAS_SYNC_PESSOAS_PER_PAGE`: paginação de pessoas
 - `IDDAS_SYNC_VENDAS_PER_PAGE`: paginação de vendas
+- `AUTH_SECRET`: segredo usado para assinar a sessão do login
+- `AUTH_USERNAME`: usuário do painel
+- `AUTH_PASSWORD`: senha do painel
 
 ## Desenvolvimento
 
@@ -51,6 +54,25 @@ npm run dev
 ```
 
 Abra `http://localhost:3000`.
+
+Com autenticação configurada, o acesso ao painel e às rotas `/api/*` exige login em `/login`.
+As exceções públicas continuam sendo:
+
+- `POST /api/clicksign/webhook`
+- `POST /api/iddas/webhook`
+
+Para validar automaticamente essa proteção antes do deploy:
+
+```bash
+npm run test:auth
+```
+
+Esse smoke test faz build, sobe a aplicação localmente com credenciais de teste e verifica:
+
+- páginas protegidas redirecionando para `/login`
+- APIs protegidas retornando `401`
+- webhooks públicos sem exigência de autenticação
+- fluxo de login emitindo cookie de sessão válido
 
 Para validar webhooks localmente com Clicksign, exponha a aplicação com `ngrok`:
 

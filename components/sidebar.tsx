@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ClipboardList,
   Database,
   FileText,
   LayoutDashboard,
+  LogOut,
   PanelLeftOpen,
   PanelRightOpen,
   Plane,
@@ -34,6 +35,13 @@ export function Sidebar({
   width: number;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <aside
@@ -60,7 +68,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className="mt-2 flex flex-col gap-2">
+      <nav className="mt-2 flex flex-1 flex-col gap-2">
         {items.map(({ href, icon: Icon, label }) => {
           const active = pathname === href;
 
@@ -81,6 +89,16 @@ export function Sidebar({
           );
         })}
       </nav>
+
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="mt-4 flex items-center rounded-2xl px-3 py-2.5 text-[13px] font-medium text-slate-300 transition hover:bg-white/6 hover:text-white"
+        title={collapsed ? "Sair" : undefined}
+      >
+        <LogOut className={`h-3.5 w-3.5 shrink-0 ${collapsed ? "mx-auto" : ""}`} />
+        {!collapsed ? <span className="ml-3 truncate">Sair</span> : null}
+      </button>
     </aside>
   );
 }

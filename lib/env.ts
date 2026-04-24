@@ -28,7 +28,13 @@ const iddasEnvSchema = z.object({
   IDDAS_SYNC_VENDAS_PER_PAGE: z.coerce.number().int().positive().max(100).default(100),
 });
 
-const envSchema = clicksignEnvSchema.merge(iddasEnvSchema);
+const authEnvSchema = z.object({
+  AUTH_SECRET: z.string().min(32).optional(),
+  AUTH_USERNAME: z.string().min(1).optional(),
+  AUTH_PASSWORD: z.string().min(8).optional(),
+});
+
+const envSchema = clicksignEnvSchema.merge(iddasEnvSchema).merge(authEnvSchema);
 const rawEnv = {
   CLICKSIGN_PROFILE: process.env.CLICKSIGN_PROFILE,
   CLICKSIGN_API_KEY: process.env.CLICKSIGN_API_KEY,
@@ -52,6 +58,9 @@ const rawEnv = {
   IDDAS_SYNC_ORCAMENTOS_PER_PAGE: process.env.IDDAS_SYNC_ORCAMENTOS_PER_PAGE,
   IDDAS_SYNC_PESSOAS_PER_PAGE: process.env.IDDAS_SYNC_PESSOAS_PER_PAGE,
   IDDAS_SYNC_VENDAS_PER_PAGE: process.env.IDDAS_SYNC_VENDAS_PER_PAGE,
+  AUTH_SECRET: process.env.AUTH_SECRET,
+  AUTH_USERNAME: process.env.AUTH_USERNAME,
+  AUTH_PASSWORD: process.env.AUTH_PASSWORD,
 };
 
 export const env = envSchema.parse(rawEnv);

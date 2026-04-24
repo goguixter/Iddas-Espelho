@@ -407,6 +407,138 @@ export function insertClicksignWebhookDelivery(input: {
   return Number(result.lastInsertRowid);
 }
 
+export function insertIddasWebhookDelivery(input: {
+  created_at: string;
+  event_name: string | null;
+  headers_json: string;
+  payload_json: string;
+  processing_error: string | null;
+  processing_status: string;
+  provider_entity_id: string | null;
+  provider_entity_type: string | null;
+  provider_occurred_at: string | null;
+  provider_orcamento_id: string | null;
+  provider_status_code: string | null;
+  provider_status_label: string | null;
+  updated_at: string;
+}) {
+  const result = db
+    .prepare(
+      `
+        INSERT INTO iddas_webhook_deliveries (
+          event_name,
+          provider_entity_type,
+          provider_entity_id,
+          provider_orcamento_id,
+          provider_occurred_at,
+          provider_status_code,
+          provider_status_label,
+          headers_json,
+          payload_json,
+          processing_status,
+          processing_error,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    )
+    .run(
+      input.event_name,
+      input.provider_entity_type,
+      input.provider_entity_id,
+      input.provider_orcamento_id,
+      input.provider_occurred_at,
+      input.provider_status_code,
+      input.provider_status_label,
+      input.headers_json,
+      input.payload_json,
+      input.processing_status,
+      input.processing_error,
+      input.created_at,
+      input.updated_at,
+    );
+
+  return Number(result.lastInsertRowid);
+}
+
+export function updateIddasWebhookDelivery(
+  id: number,
+  input: {
+    processing_error?: string | null;
+    processing_status?: string;
+    updated_at: string;
+  },
+) {
+  const current = db
+    .prepare(
+      `
+        SELECT *
+        FROM iddas_webhook_deliveries
+        WHERE id = ?
+      `,
+    )
+    .get(id) as
+    | {
+        processing_error: string | null;
+        processing_status: string;
+      }
+    | undefined;
+
+  if (!current) {
+    return;
+  }
+
+  db.prepare(
+    `
+      UPDATE iddas_webhook_deliveries
+      SET
+        processing_status = ?,
+        processing_error = ?,
+        updated_at = ?
+      WHERE id = ?
+    `,
+  ).run(
+    input.processing_status ?? current.processing_status,
+    input.processing_error === undefined ? current.processing_error : input.processing_error,
+    input.updated_at,
+    id,
+  );
+}
+
+export function getLatestIddasWebhookDeliveryByEntity(
+  entityType: string,
+  entityId: string,
+) {
+  return db
+    .prepare(
+      `
+        SELECT *
+        FROM iddas_webhook_deliveries
+        WHERE provider_entity_type = ?
+          AND provider_entity_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+    )
+    .get(entityType, entityId) as
+    | {
+        event_name: string | null;
+        headers_json: string;
+        id: number;
+        payload_json: string;
+        processing_error: string | null;
+        processing_status: string;
+        provider_entity_id: string | null;
+        provider_entity_type: string | null;
+        provider_occurred_at: string | null;
+        provider_orcamento_id: string | null;
+        provider_status_code: string | null;
+        provider_status_label: string | null;
+      }
+    | undefined;
+}
+
 export function updateClicksignWebhookDelivery(
   id: number,
   input: {

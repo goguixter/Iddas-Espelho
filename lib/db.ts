@@ -394,6 +394,23 @@ function runMigrations() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS iddas_webhook_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_name TEXT,
+      provider_entity_type TEXT,
+      provider_entity_id TEXT,
+      provider_orcamento_id TEXT,
+      provider_occurred_at TEXT,
+      provider_status_code TEXT,
+      provider_status_label TEXT,
+      headers_json TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      processing_status TEXT NOT NULL DEFAULT 'received',
+      processing_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   ensureColumn("sync_state", "status", "TEXT NOT NULL DEFAULT 'idle'");
@@ -580,6 +597,13 @@ function runMigrations() {
     "idx_clicksign_webhook_deliveries_document",
     "CREATE INDEX IF NOT EXISTS idx_clicksign_webhook_deliveries_document ON clicksign_webhook_deliveries (provider_document_id, provider_envelope_id, created_at DESC)",
   );
+  ensureIndex(
+    "idx_iddas_webhook_deliveries_entity",
+    "CREATE INDEX IF NOT EXISTS idx_iddas_webhook_deliveries_entity ON iddas_webhook_deliveries (provider_entity_type, provider_entity_id, provider_orcamento_id, created_at DESC)",
+  );
+  ensureColumn("iddas_webhook_deliveries", "provider_occurred_at", "TEXT");
+  ensureColumn("iddas_webhook_deliveries", "provider_status_code", "TEXT");
+  ensureColumn("iddas_webhook_deliveries", "provider_status_label", "TEXT");
   ensureIndex(
     "idx_document_templates_active",
     "CREATE INDEX IF NOT EXISTS idx_document_templates_active ON document_templates (is_active, updated_at DESC)",

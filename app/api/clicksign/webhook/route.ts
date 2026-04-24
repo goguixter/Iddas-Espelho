@@ -9,6 +9,7 @@ import {
   insertClicksignWebhookDelivery,
   updateClicksignWebhookDelivery,
 } from "@/lib/documents/repository";
+import { readString, toObject } from "@/lib/object-utils";
 import { logSync } from "@/lib/sync/logger";
 
 export async function POST(request: Request) {
@@ -117,22 +118,13 @@ function safeParseWebhookPayload(rawText: string) {
   }
 
   try {
-    return JSON.parse(rawText) as unknown;
+    return toObject(JSON.parse(rawText) as unknown);
   } catch {
     return null;
   }
 }
 
 function extractEventName(payload: unknown) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return null;
-  }
-
-  const event = (payload as Record<string, unknown>).event;
-  if (!event || typeof event !== "object" || Array.isArray(event)) {
-    return null;
-  }
-
-  const name = (event as Record<string, unknown>).name;
-  return typeof name === "string" && name.trim() ? name.trim() : null;
+  const event = toObject(payload)?.event;
+  return readString(toObject(event)?.name);
 }

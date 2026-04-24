@@ -1,16 +1,6 @@
 import type { IddasObject } from "@/lib/iddas/client";
-
-export function readString(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) {
-    return value;
-  }
-
-  if (typeof value === "number") {
-    return String(value);
-  }
-
-  return null;
-}
+export { readString } from "@/lib/object-utils";
+import { readString } from "@/lib/object-utils";
 
 export function readId(value: unknown): string | null {
   if (typeof value === "string" || typeof value === "number") {

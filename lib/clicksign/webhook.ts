@@ -7,6 +7,7 @@ import {
   updateDocumentSignatureRequest,
   upsertDocumentSignatureEvent,
 } from "@/lib/documents/repository";
+import { readNestedString, readString, toObject } from "@/lib/object-utils";
 
 type ClicksignWebhookPayload = {
   document?: unknown;
@@ -200,29 +201,7 @@ function resolveUpdatedSignersJson(currentSignersJson: string, documentSigners: 
 function toWebhookPayload(payload: unknown) {
   return (payload && typeof payload === "object" && !Array.isArray(payload)
     ? payload
-    : {}) as ClicksignWebhookPayload;
+  : {}) as ClicksignWebhookPayload;
 }
 
-function toObject(input: unknown) {
-  return input && typeof input === "object" && !Array.isArray(input)
-    ? (input as Record<string, unknown>)
-    : null;
-}
-
-function normalizeString(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function readNestedString(input: unknown, path: string[]) {
-  let current = input;
-
-  for (const segment of path) {
-    if (!current || typeof current !== "object" || Array.isArray(current)) {
-      return null;
-    }
-
-    current = (current as Record<string, unknown>)[segment];
-  }
-
-  return normalizeString(current);
-}
+const normalizeString = readString;
