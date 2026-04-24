@@ -19,17 +19,35 @@ export async function renderDocumentPdf(html: string) {
 }
 
 async function launchBrowser() {
+  const errors: string[] = [];
+
   try {
     return await chromium.launch({ channel: "chrome", headless: true });
-  } catch {
-    try {
-      return await chromium.launch({ channel: "msedge", headless: true });
-    } catch (error) {
-      throw new Error(
-        error instanceof Error
-          ? `Não foi possível iniciar o navegador para gerar PDF: ${error.message}`
-          : "Não foi possível iniciar o navegador para gerar PDF.",
-      );
-    }
+  } catch (error) {
+    errors.push(formatLaunchError("chrome", error));
   }
+
+  try {
+    return await chromium.launch({ channel: "msedge", headless: true });
+  } catch (error) {
+    errors.push(formatLaunchError("msedge", error));
+  }
+
+  try {
+    return await chromium.launch({ headless: true });
+  } catch (error) {
+    errors.push(formatLaunchError("playwright-chromium", error));
+  }
+
+  throw new Error(
+    `Não foi possível iniciar o navegador para gerar PDF. Tentativas: ${errors.join(" | ")}`,
+  );
+}
+
+function formatLaunchError(target: string, error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return `${target}: ${error.message}`;
+  }
+
+  return `${target}: falha desconhecida`;
 }
