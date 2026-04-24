@@ -74,6 +74,21 @@ Esse smoke test faz build, sobe a aplicação localmente com credenciais de test
 - webhooks públicos sem exigência de autenticação
 - fluxo de login emitindo cookie de sessão válido
 
+## Migração da base SQLite no Railway
+
+Com o volume montado em `/app/data`, é possível importar a base atual pelo painel autenticado:
+
+1. gere um backup local consistente:
+
+```bash
+sqlite3 data/iddas-mirror.sqlite "PRAGMA wal_checkpoint(FULL);"
+sqlite3 data/iddas-mirror.sqlite ".backup './iddas-mirror.backup.sqlite'"
+```
+
+2. acesse `/admin/importar-base`
+3. envie o arquivo `iddas-mirror.backup.sqlite`
+4. reinicie o serviço no Railway para o sistema promover a base importada no boot
+
 Para validar webhooks localmente com Clicksign, exponha a aplicação com `ngrok`:
 
 ```bash

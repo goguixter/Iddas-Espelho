@@ -1,11 +1,10 @@
 import Database from "better-sqlite3";
-import fs from "node:fs";
-import path from "node:path";
+import { ensureDataDir, getDbPath, promotePendingDatabaseImport } from "@/lib/db-import";
 
-const dataDir = path.join(process.cwd(), "data");
-const dbPath = path.join(dataDir, "iddas-mirror.sqlite");
+ensureDataDir();
+promotePendingDatabaseImport();
 
-fs.mkdirSync(dataDir, { recursive: true });
+const dbPath = getDbPath();
 
 const globalForDb = globalThis as unknown as {
   iddasDb?: Database.Database;
