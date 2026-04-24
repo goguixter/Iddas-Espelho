@@ -3,6 +3,8 @@ import { JetBrains_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 
+export const dynamic = "force-dynamic";
+
 const manrope = Manrope({
   variable: "--font-manrope",
   subsets: ["latin"],
